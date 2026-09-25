@@ -194,17 +194,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         tv.usesFindBar = true
         tv.isIncrementalSearchingEnabled = true
         tv.layoutManager?.allowsNonContiguousLayout = true
-        // No wrapping: long lines scroll horizontally.
+        // Wrap long lines at the view's width.
         tv.minSize = .zero
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
-        tv.isHorizontallyResizable = true
+        tv.isHorizontallyResizable = false
         tv.isVerticallyResizable = true
-        tv.autoresizingMask = [.width, .height]
-        tv.textContainer?.widthTracksTextView = false
-        tv.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        tv.autoresizingMask = [.width]
+        tv.textContainer?.widthTracksTextView = true
 
         diffScroll.hasVerticalScroller = true
-        diffScroll.hasHorizontalScroller = true
         diffScroll.documentView = tv
     }
 
@@ -462,7 +460,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     }
 
     private var countText: String {
-        "\(commits.count.formatted()) commits"
+        commits.count == 1 ? "1 commit" : "\(commits.count.formatted()) commits"
     }
 
     private func showCount() {
