@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
 
         let app = submenu(main, "gitview")
+        app.addItem(withTitle: "About gitview", action: #selector(showAbout(_:)), keyEquivalent: "").target = self
+        app.addItem(.separator())
         app.addItem(withTitle: "Hide gitview", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(withTitle: "Quit gitview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -61,6 +63,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         return main
+    }
+
+    @objc private func showAbout(_ sender: Any?) {
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        let credits = NSAttributedString(
+            string: "A plain git history viewer for macOS, like gitk.\n100% vibe coded.",
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                         .foregroundColor: NSColor.labelColor, .paragraphStyle: centered])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "gitview", .credits: credits])
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func submenu(_ main: NSMenu, _ title: String) -> NSMenu {
