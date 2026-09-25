@@ -4,6 +4,8 @@ A plain git history viewer for macOS. Like gitk, without Tk.
 
 > **This project is 100% vibe coded.** Every line of code, test and doc was written by an AI (Claude) in a chat. A human only described what they wanted, used the app, and said what to change.
 
+![gitview showing the Homebrew repo](docs/screenshot.png)
+
 ## Why
 
 gitk does one job well: it shows the history. But it runs on Tk (`wish`), and on a Mac that means:
@@ -79,4 +81,8 @@ make test               # unit tests
 make run ARGS="--all"   # run a dev build in the terminal
 ```
 
-A dev build (`swift build`) runs attached to the terminal. `GITVIEW_FOREGROUND=1` does the same for the installed app. The design is in [docs/superpowers/specs](docs/superpowers/specs).
+A dev build (`swift build`) runs attached to the terminal. `GITVIEW_FOREGROUND=1` does the same for the installed app. The design is in [docs/superpowers/specs](docs/superpowers/specs). `make icon` redraws the app icon from `app/make-icon.swift`.
+
+## License
+
+[MIT](LICENSE)
