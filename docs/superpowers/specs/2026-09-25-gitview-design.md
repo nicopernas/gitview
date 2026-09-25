@@ -69,6 +69,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
   - Added green, removed red, hunk headers blue, file headers bold. Merges show git's combined diff.
   - Diffs over 50,000 lines are cut with a note.
   - Loaded in the background; stale results are dropped when the selection changes.
+- The focused pane (commits, files incl. filter, diff incl. find bar) gets a thin border: accent color, gray when the window is inactive.
 - Status bar at the bottom.
 - Split sizes and window frame are saved and restored.
 

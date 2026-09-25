@@ -34,6 +34,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     private let diffScroll = NSScrollView()
     private let searchField = NSSearchField()
     private let statusLabel = NSTextField(labelWithString: "")
+    private var panes: [PaneView] = []
 
     private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
     private var boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
@@ -48,11 +49,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     init(repo: URL, args: [String]) {
         self.repo = repo
         self.args = args
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                              backing: .buffered, defer: false)
+        let window = MainWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
+                                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                backing: .buffered, defer: false)
         super.init(window: window)
         window.delegate = self
+        window.onFirstResponderChange = { [weak self] in self?.updatePaneFocus() }
         window.title = ([repo.lastPathComponent] + args).joined(separator: " ")
         buildUI(window)
         applyFont(Self.resolve(FontPreference.load()))
@@ -77,10 +79,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
+        panes = [PaneView(scroll(commitTable)), PaneView(filePane()), PaneView(diffScroll)]
         let left = splitView(vertical: false, name: "gitview.split.left",
-                             [scroll(commitTable), filePane()], defaults: [-220], holding: 1)
+                             [panes[0], panes[1]], defaults: [-220], holding: 1)
         let main = splitView(vertical: true, name: "gitview.split.main",
-                             [left, diffScroll], defaults: [620], holding: 0)
+                             [left, panes[2]], defaults: [620], holding: 0)
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
@@ -363,6 +366,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     @objc func gvReload(_ sender: Any?) {
         startLoading(select: selectedCommit?.hash)
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) { updatePaneFocus() }
+    func windowDidResignKey(_ notification: Notification) { updatePaneFocus() }
+
+    private func updatePaneFocus() {
+        let owner = focusOwner as? NSView
+        let active = window?.isKeyWindow ?? false
+        for pane in panes {
+            let focused = owner?.isDescendant(of: pane) ?? false
+            pane.focus = focused ? (active ? .active : .inactive) : .none
+        }
     }
 
     /// The focused view; for a text field being edited, the field rather than its field editor.

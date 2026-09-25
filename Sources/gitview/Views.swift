@@ -79,3 +79,53 @@ func textCell(_ table: NSTableView, _ id: NSUserInterfaceItemIdentifier, _ text:
     ])
     return cell
 }
+
+/// Window that reports first responder changes.
+final class MainWindow: NSWindow {
+    var onFirstResponderChange: (() -> Void)?
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let ok = super.makeFirstResponder(responder)
+        onFirstResponderChange?()
+        return ok
+    }
+}
+
+/// Wraps a pane and draws a thin border around it while it has focus.
+final class PaneView: NSView {
+    enum Focus { case none, active, inactive }
+
+    var focus = Focus.none {
+        didSet { if focus != oldValue { updateBorder() } }
+    }
+
+    init(_ content: NSView) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBorder()
+    }
+
+    private func updateBorder() {
+        guard let layer else { return }
+        // A layer border is drawn above sublayers, so it shows over the scroll view.
+        layer.borderWidth = focus == .none ? 0 : 1.5
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let color: NSColor = focus == .active ? .controlAccentColor : .tertiaryLabelColor
+            layer.borderColor = color.cgColor
+        }
+    }
+}
