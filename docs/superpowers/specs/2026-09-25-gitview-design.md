@@ -77,7 +77,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
 
 - Up/Down, Page Up/Down, Home/End: move in commit list.
 - Space / Shift+Space: scroll diff down / up.
-- Tab: next pane.
+- Tab / Shift+Tab: next / previous pane (commits, files, diff). Never lands on a search field.
 - Cmd+F or /: focus commit find field. When the file list has focus: the file filter. When the diff has focus: native find bar in the diff.
 - Enter or Cmd+G / Shift+Cmd+G: next / previous match.
 - Cmd+R: reload. Cmd+W / Cmd+Q: close / quit.

@@ -105,11 +105,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         ])
         window.contentView = content
 
-        // Tab cycles the three panes; the search fields are reached with Cmd+F or a click.
-        window.autorecalculatesKeyViewLoop = false
-        commitTable.nextKeyView = fileTable
-        fileTable.nextKeyView = diffView
-        diffView.nextKeyView = commitTable
+        // Tab is handled by gvNextPane / gvPreviousPane; search fields are reached with Cmd+F or a click.
         window.initialFirstResponder = commitTable
 
         window.layoutIfNeeded()
@@ -302,11 +298,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
                 findCommit(forward: !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false))
                 return true
             }
-            if selector == #selector(NSResponder.cancelOperation(_:)) {
+            if selector == #selector(NSResponder.cancelOperation(_:)) || isTab(selector) {
                 window?.makeFirstResponder(commitTable)
                 return true
             }
         } else if control === fileFilter {
+            if isTab(selector) {
+                window?.makeFirstResponder(fileTable)
+                return true
+            }
             if selector == #selector(NSResponder.insertNewline(_:)) || selector == #selector(NSResponder.moveDown(_:)) {
                 window?.makeFirstResponder(fileTable)
                 if let i = firstFileRow { fileTable.selectRowIndexes([i], byExtendingSelection: false) }
@@ -320,6 +320,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             }
         }
         return false
+    }
+
+    private func isTab(_ selector: Selector) -> Bool {
+        selector == #selector(NSResponder.insertTab(_:)) || selector == #selector(NSResponder.insertBacktab(_:))
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -366,6 +370,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     @objc func gvReload(_ sender: Any?) {
         startLoading(select: selectedCommit?.hash)
+    }
+
+    @objc func gvNextPane(_ sender: Any?) { movePane(by: 1) }
+    @objc func gvPreviousPane(_ sender: Any?) { movePane(by: -1) }
+
+    /// Cycles focus through commits, files and diff.
+    private func movePane(by step: Int) {
+        let targets: [NSView] = [commitTable, fileTable, diffView]
+        let owner = focusOwner as? NSView
+        let current = panes.firstIndex { owner?.isDescendant(of: $0) ?? false } ?? 0
+        window?.makeFirstResponder(targets[(current + step + targets.count) % targets.count])
     }
 
     func windowDidBecomeKey(_ notification: Notification) { updatePaneFocus() }

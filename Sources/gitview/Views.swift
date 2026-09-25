@@ -2,14 +2,12 @@ import AppKit
 
 private let tabKey: UInt16 = 48
 
-/// Moves focus with Tab / Shift+Tab. Returns true if handled.
-private func handleTab(_ event: NSEvent, in window: NSWindow?) -> Bool {
+/// Tab / Shift+Tab move to the next / previous pane. Returns true if handled.
+private func handleTab(_ event: NSEvent, from sender: NSResponder) -> Bool {
     guard event.keyCode == tabKey else { return false }
-    if event.modifierFlags.contains(.shift) {
-        window?.selectPreviousKeyView(nil)
-    } else {
-        window?.selectNextKeyView(nil)
-    }
+    let back = event.modifierFlags.contains(.shift)
+    let action = back ? #selector(MainWindowController.gvPreviousPane(_:)) : #selector(MainWindowController.gvNextPane(_:))
+    NSApp.sendAction(action, to: nil, from: sender)
     return true
 }
 
@@ -26,7 +24,7 @@ final class KeyTableView: NSTableView {
     var onCopy: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if handleTab(event, in: window) || handleSlash(event, from: self) { return }
+        if handleTab(event, from: self) || handleSlash(event, from: self) { return }
         if event.charactersIgnoringModifiers == " " {
             onSpace?(event.modifierFlags.contains(.shift))
             return
@@ -41,7 +39,7 @@ final class KeyTableView: NSTableView {
 
 final class DiffTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
-        if handleTab(event, in: window) || handleSlash(event, from: self) { return }
+        if handleTab(event, from: self) || handleSlash(event, from: self) { return }
         if event.charactersIgnoringModifiers == " " {
             if event.modifierFlags.contains(.shift) { scrollPageUp(nil) } else { scrollPageDown(nil) }
             return
@@ -122,7 +120,7 @@ final class PaneView: NSView {
     private func updateBorder() {
         guard let layer else { return }
         // A layer border is drawn above sublayers, so it shows over the scroll view.
-        layer.borderWidth = focus == .none ? 0 : 1.5
+        layer.borderWidth = focus == .none ? 0 : 1
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let color: NSColor = focus == .active ? .controlAccentColor : .tertiaryLabelColor
             layer.borderColor = color.cgColor
