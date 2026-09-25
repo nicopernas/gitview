@@ -63,8 +63,9 @@ One Swift package, built with SwiftPM (no Xcode needed).
 
 - Left: commit table with three columns: graph + ref labels + subject, author, date (`yyyy-MM-dd HH:mm`, local).
   - Ref labels: local branch, remote branch, tag, with different colors. HEAD's branch is bold.
-- Right top: file list. First entry "Commit", then changed files. Click scrolls the diff to that file.
-- Right bottom: header (hash, parents, author, committer, dates, full message) then diff, in SF Mono.
+- Right top: filter field and file list. First entry "Commit", then changed files. Click scrolls the diff to that file. Typing in the filter hides files that don't match (substring, ignoring case); the "Commit" entry is hidden while filtering.
+- Right bottom: header (hash, parents, author, committer, dates, full message) then diff.
+- One font for list, file list and diff. Default Source Code Pro 12 (falls back to the system monospaced font). Changed with the font panel (Cmd+T) or Bigger/Smaller/Reset (Cmd+= / Cmd+- / Cmd+0); saved in user defaults.
   - Added green, removed red, hunk headers blue, file headers bold. Merges show git's combined diff.
   - Diffs over 50,000 lines are cut with a note.
   - Loaded in the background; stale results are dropped when the selection changes.
@@ -76,7 +77,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
 - Up/Down, Page Up/Down, Home/End: move in commit list.
 - Space / Shift+Space: scroll diff down / up.
 - Tab: next pane.
-- Cmd+F: focus find field. When the diff has focus: native find bar in the diff.
+- Cmd+F: focus commit find field. When the file list has focus: the file filter. When the diff has focus: native find bar in the diff.
 - Enter or Cmd+G / Shift+Cmd+G: next / previous match.
 - Cmd+R: reload. Cmd+W / Cmd+Q: close / quit.
 

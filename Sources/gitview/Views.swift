@@ -50,15 +50,17 @@ final class DiffTextView: NSTextView {
 }
 
 /// A plain text cell for view-based tables.
-func textCell(_ table: NSTableView, _ id: NSUserInterfaceItemIdentifier, _ text: String,
+func textCell(_ table: NSTableView, _ id: NSUserInterfaceItemIdentifier, _ text: String, font: NSFont,
               truncate: NSLineBreakMode = .byTruncatingTail) -> NSTableCellView {
     if let cell = table.makeView(withIdentifier: id, owner: nil) as? NSTableCellView {
         cell.textField?.stringValue = text
+        cell.textField?.font = font
         return cell
     }
     let cell = NSTableCellView()
     cell.identifier = id
     let field = NSTextField(labelWithString: text)
+    field.font = font
     field.lineBreakMode = truncate
     field.translatesAutoresizingMaskIntoConstraints = false
     cell.addSubview(field)

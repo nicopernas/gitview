@@ -49,3 +49,24 @@ private func commit(_ hash: String, _ author: String, _ subject: String) -> Comm
         #expect(Search.find("fix", in: [], from: -1, forward: true) == nil)
     }
 }
+
+@Suite struct FileFilterTests {
+    let files = [
+        FileEntry(path: "Sources/App/Main.swift", location: 0),
+        FileEntry(path: "README.md", location: 10),
+        FileEntry(path: "Tests/MainTests.swift", location: 20),
+    ]
+
+    @Test func emptyQueryKeepsAllFiles() {
+        #expect(Search.files(files, matching: "") == files)
+    }
+
+    @Test func matchesSubstringIgnoringCase() {
+        #expect(Search.files(files, matching: "main").map(\.path) == ["Sources/App/Main.swift", "Tests/MainTests.swift"])
+        #expect(Search.files(files, matching: "readme").map(\.path) == ["README.md"])
+    }
+
+    @Test func noMatchGivesEmptyList() {
+        #expect(Search.files(files, matching: "zzz").isEmpty)
+    }
+}

@@ -8,12 +8,12 @@ final class CommitCellView: NSTableCellView {
         .systemRed, .systemTeal, .systemPink, .systemBrown,
     ]
     private static let laneWidth: CGFloat = 14
-    private static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-    private static let labelFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-    private static let labelBoldFont = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
 
     var commit: Commit?
     var graph: GraphRow?
+    var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    var labelFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+    var labelBoldFont = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
 
     override var isFlipped: Bool { true }
 
@@ -49,11 +49,11 @@ final class CommitCellView: NSTableCellView {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: Self.font,
+            .font: font,
             .foregroundColor: selected ? NSColor.alternateSelectedControlTextColor : NSColor.labelColor,
             .paragraphStyle: style,
         ]
-        let textH = Self.font.boundingRectForFont.height
+        let textH = ceil(font.ascender - font.descender)
         let rect = NSRect(x: textX, y: (h - textH) / 2, width: max(0, bounds.width - textX), height: textH)
         (commit.subject as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
     }
@@ -86,7 +86,7 @@ final class CommitCellView: NSTableCellView {
         case .other: tint = .systemGray
         }
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: ref.isHead ? Self.labelBoldFont : Self.labelFont,
+            .font: ref.isHead ? labelBoldFont : labelFont,
             .foregroundColor: selected ? NSColor.alternateSelectedControlTextColor : NSColor.labelColor,
         ]
         let text = ref.name as NSString

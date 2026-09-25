@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let c = MainWindowController(repo: repo, args: args)
         controller = c
         c.showWindow(nil)
+        // For testing: open behind other windows without taking focus.
+        if ProcessInfo.processInfo.environment["GITVIEW_NO_ACTIVATE"] != nil { return }
         // Plain activate() is refused when started from a terminal; this one works.
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -37,6 +39,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Find…", action: #selector(MainWindowController.gvFind(_:)), keyEquivalent: "f")
         edit.addItem(withTitle: "Find Next", action: #selector(MainWindowController.gvFindNext(_:)), keyEquivalent: "g")
         edit.addItem(withTitle: "Find Previous", action: #selector(MainWindowController.gvFindPrevious(_:)), keyEquivalent: "G")
+
+        let format = submenu(main, "Format")
+        let fonts = NSFontManager.shared
+        format.addItem(withTitle: "Show Fonts", action: #selector(NSFontManager.orderFrontFontPanel(_:)), keyEquivalent: "t").target = fonts
+        let bigger = format.addItem(withTitle: "Bigger", action: #selector(NSFontManager.modifyFont(_:)), keyEquivalent: "=")
+        bigger.target = fonts
+        bigger.tag = Int(NSFontAction.sizeUpFontAction.rawValue)
+        let smaller = format.addItem(withTitle: "Smaller", action: #selector(NSFontManager.modifyFont(_:)), keyEquivalent: "-")
+        smaller.target = fonts
+        smaller.tag = Int(NSFontAction.sizeDownFontAction.rawValue)
+        format.addItem(withTitle: "Reset Font", action: #selector(MainWindowController.gvResetFont(_:)), keyEquivalent: "0")
 
         let view = submenu(main, "View")
         view.addItem(withTitle: "Reload", action: #selector(MainWindowController.gvReload(_:)), keyEquivalent: "r")

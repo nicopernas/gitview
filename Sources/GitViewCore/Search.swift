@@ -20,3 +20,11 @@ public enum Search {
         return nil
     }
 }
+
+extension Search {
+    /// Files whose path contains `query`, ignoring case. Empty query keeps all.
+    public static func files(_ files: [FileEntry], matching query: String) -> [FileEntry] {
+        guard !query.isEmpty else { return files }
+        return files.filter { $0.path.range(of: query, options: .caseInsensitive) != nil }
+    }
+}

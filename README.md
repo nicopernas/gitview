@@ -30,10 +30,12 @@ The terminal is free right away. Set `GITVIEW_FOREGROUND=1` to keep it attached 
 | ↑ ↓ | Move between commits |
 | Space / Shift+Space | Scroll diff |
 | Tab | Next pane |
-| Cmd+F | Find commit (in the diff: find text) |
+| Cmd+F | Find commit (in the file list: filter files; in the diff: find text) |
 | Enter, Cmd+G / Shift+Cmd+G | Next / previous match |
 | Cmd+C | Copy commit hash (or file path) |
 | Cmd+R | Reload |
+| Cmd+T | Choose font (default Source Code Pro 12) |
+| Cmd+= / Cmd+- / Cmd+0 | Bigger / smaller / reset font |
 
 ## Logs
 

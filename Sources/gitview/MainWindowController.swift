@@ -16,9 +16,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     private var commits: [Commit] = []
     private var rows: [GraphRow] = []
-    private var files: [FileEntry] = []
-    /// The file list shows "Commit" plus files once details are loaded.
-    private var hasDetails = false
+    private var details: CommitDetails?
+    /// Files of the current commit that match the file filter.
+    private var visibleFiles: [FileEntry] = []
 
     private var loader: LogLoader?
     private var loadGen = 0
@@ -29,14 +29,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     private let commitTable = KeyTableView()
     private let fileTable = KeyTableView()
+    private let fileFilter = NSSearchField()
     private let diffView = DiffTextView(usingTextLayoutManager: false)
     private let diffScroll = NSScrollView()
     private let searchField = NSSearchField()
     private let statusLabel = NSTextField(labelWithString: "")
 
-    private let diffFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    private let diffBoldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
-    private let dateFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+    private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private var boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+    private var labelFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+    private var labelBoldFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
@@ -53,6 +55,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         window.delegate = self
         window.title = ([repo.lastPathComponent] + args).joined(separator: " ")
         buildUI(window)
+        applyFont(Self.resolve(FontPreference.load()))
+        NSFontManager.shared.target = self
         if !window.setFrameUsingName("gitview.window") { window.center() }
         window.setFrameAutosaveName("gitview.window")
         startLoading(select: nil)
@@ -74,7 +78,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         window.toolbarStyle = .unified
 
         let right = splitView(vertical: false, name: "gitview.split.right",
-                              [scroll(fileTable), diffScroll], defaults: [160])
+                              [filePane(), diffScroll], defaults: [180])
         let main = splitView(vertical: true, name: "gitview.split.main",
                              [scroll(commitTable), right], defaults: [620])
 
@@ -97,8 +101,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             statusLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -4),
         ])
         window.contentView = content
-        window.autorecalculatesKeyViewLoop = true
+
+        // Tab cycles the three panes; the search fields are reached with Cmd+F or a click.
+        window.autorecalculatesKeyViewLoop = false
+        commitTable.nextKeyView = fileTable
+        fileTable.nextKeyView = diffView
+        diffView.nextKeyView = commitTable
         window.initialFirstResponder = commitTable
+
         window.layoutIfNeeded()
         main.restoreOrSetDefaults()
         right.restoreOrSetDefaults()
@@ -107,18 +117,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     private func setUpCommitTable() {
         let t = commitTable
-        let columns: [(NSUserInterfaceItemIdentifier, String, CGFloat, CGFloat)] = [
-            (.subject, "Subject", 300, 40), (.author, "Author", 130, 40), (.date, "Date", 128, 124),
+        let columns: [(NSUserInterfaceItemIdentifier, String, CGFloat)] = [
+            (.subject, "Subject", 300), (.author, "Author", 130), (.date, "Date", 130),
         ]
-        for (id, title, width, minWidth) in columns {
+        for (id, title, width) in columns {
             let col = NSTableColumn(identifier: id)
             col.title = title
             col.width = width
-            col.minWidth = minWidth
+            col.minWidth = 40
             t.addTableColumn(col)
         }
         t.style = .plain
-        t.rowHeight = 22
         t.intercellSpacing = NSSize(width: 6, height: 0)
         t.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         t.allowsMultipleSelection = false
@@ -141,15 +150,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         t.addTableColumn(col)
         t.headerView = nil
         t.style = .plain
-        t.rowHeight = 20
         t.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         t.dataSource = self
         t.delegate = self
         t.onSpace = { [weak self] up in self?.pageDiff(up: up) }
         t.onCopy = { [weak self] in
-            guard let self, self.fileTable.selectedRow > 0 else { return }
-            self.copyToPasteboard(self.files[self.fileTable.selectedRow - 1].path)
+            guard let self, let f = self.fileEntry(at: self.fileTable.selectedRow) else { return }
+            self.copyToPasteboard(f.path)
         }
+
+        fileFilter.placeholderString = "Filter files"
+        fileFilter.controlSize = .small
+        fileFilter.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        fileFilter.sendsSearchStringImmediately = true
+        fileFilter.delegate = self
+    }
+
+    private func filePane() -> NSView {
+        let pane = NSView()
+        let list = scroll(fileTable)
+        for v in [fileFilter, list] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            pane.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            fileFilter.topAnchor.constraint(equalTo: pane.topAnchor, constant: 4),
+            fileFilter.leadingAnchor.constraint(equalTo: pane.leadingAnchor, constant: 6),
+            fileFilter.trailingAnchor.constraint(equalTo: pane.trailingAnchor, constant: -6),
+            list.topAnchor.constraint(equalTo: fileFilter.bottomAnchor, constant: 4),
+            list.leadingAnchor.constraint(equalTo: pane.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: pane.trailingAnchor),
+            list.bottomAnchor.constraint(equalTo: pane.bottomAnchor),
+        ])
+        return pane
     }
 
     private func setUpDiffView() {
@@ -157,7 +190,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         tv.isEditable = false
         tv.isSelectable = true
         tv.isRichText = false
-        tv.font = diffFont
         tv.textContainerInset = NSSize(width: 6, height: 6)
         tv.usesFindBar = true
         tv.isIncrementalSearchingEnabled = true
@@ -195,6 +227,49 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         return s
     }
 
+    // MARK: - Font
+
+    private static func resolve(_ p: FontPreference) -> NSFont {
+        NSFont(name: p.name, size: p.size) ?? .monospacedSystemFont(ofSize: p.size, weight: .regular)
+    }
+
+    private func applyFont(_ f: NSFont) {
+        let fm = NSFontManager.shared
+        font = f
+        boldFont = fm.convert(f, toHaveTrait: .boldFontMask)
+        labelFont = fm.convert(f, toSize: max(f.pointSize - 1, 8))
+        labelBoldFont = fm.convert(labelFont, toHaveTrait: .boldFontMask)
+        fm.setSelectedFont(f, isMultiple: false)
+
+        let lineHeight = ceil(NSLayoutManager().defaultLineHeight(for: f))
+        commitTable.rowHeight = lineHeight + 8
+        fileTable.rowHeight = lineHeight + 4
+        if let date = commitTable.tableColumn(withIdentifier: .date) {
+            date.minWidth = ceil(("0000-00-00 00:00" as NSString).size(withAttributes: [.font: f]).width) + 12
+            date.width = max(date.width, date.minWidth)
+        }
+        diffView.font = f
+        commitTable.reloadData()
+        fileTable.reloadData()
+        if let details { render(details) }
+    }
+
+    /// Sent by the font panel and the Bigger / Smaller menu items.
+    @objc func changeFont(_ sender: Any?) {
+        guard let fm = sender as? NSFontManager else { return }
+        setFont(fm.convert(font))
+    }
+
+    @objc func gvResetFont(_ sender: Any?) {
+        setFont(Self.resolve(.standard))
+    }
+
+    private func setFont(_ f: NSFont) {
+        FontPreference(name: f.fontName, size: Double(f.pointSize)).save()
+        Log.info("font: \(f.fontName) \(f.pointSize)")
+        applyFont(f)
+    }
+
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -217,24 +292,63 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         return item
     }
 
+    // MARK: - Search fields
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-        guard control === searchField else { return false }
-        if selector == #selector(NSResponder.insertNewline(_:)) {
-            findCommit(forward: !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false))
-            return true
-        }
-        if selector == #selector(NSResponder.cancelOperation(_:)) {
-            window?.makeFirstResponder(commitTable)
-            return true
+        if control === searchField {
+            if selector == #selector(NSResponder.insertNewline(_:)) {
+                findCommit(forward: !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false))
+                return true
+            }
+            if selector == #selector(NSResponder.cancelOperation(_:)) {
+                window?.makeFirstResponder(commitTable)
+                return true
+            }
+        } else if control === fileFilter {
+            if selector == #selector(NSResponder.insertNewline(_:)) || selector == #selector(NSResponder.moveDown(_:)) {
+                window?.makeFirstResponder(fileTable)
+                if let i = firstFileRow { fileTable.selectRowIndexes([i], byExtendingSelection: false) }
+                return true
+            }
+            if selector == #selector(NSResponder.cancelOperation(_:)) {
+                fileFilter.stringValue = ""
+                applyFileFilter()
+                window?.makeFirstResponder(fileTable)
+                return true
+            }
         }
         return false
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if (obj.object as AnyObject?) === fileFilter { applyFileFilter() }
+    }
+
+    private func applyFileFilter() {
+        visibleFiles = Search.files(details?.files ?? [], matching: fileFilter.stringValue)
+        fileTable.reloadData()
+    }
+
+    /// The "Commit" row is hidden while filtering.
+    private var showsCommitRow: Bool { fileFilter.stringValue.isEmpty }
+
+    private func fileEntry(at row: Int) -> FileEntry? {
+        let i = showsCommitRow ? row - 1 : row
+        return i >= 0 && i < visibleFiles.count ? visibleFiles[i] : nil
+    }
+
+    private var firstFileRow: Int? {
+        visibleFiles.isEmpty ? nil : (showsCommitRow ? 1 : 0)
     }
 
     // MARK: - Menu actions
 
     @objc func gvFind(_ sender: Any?) {
+        Log.info("find: responder=\(responderName) diff=\(diffHasFocus) files=\(fileListHasFocus)")
         if diffHasFocus {
             diffView.finderAction(.showFindInterface)
+        } else if fileListHasFocus {
+            window?.makeFirstResponder(fileFilter)
         } else {
             window?.makeFirstResponder(searchField)
         }
@@ -252,11 +366,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         startLoading(select: selectedCommit?.hash)
     }
 
+    /// The focused view; for a text field being edited, the field rather than its field editor.
+    private var focusOwner: NSResponder? {
+        guard let r = window?.firstResponder else { return nil }
+        if let tv = r as? NSTextView, tv.isFieldEditor, let owner = tv.delegate as? NSResponder { return owner }
+        return r
+    }
+
+    private var responderName: String {
+        focusOwner.map { String(describing: type(of: $0)) } ?? "nil"
+    }
+
     /// True when the diff or its find bar has keyboard focus.
     private var diffHasFocus: Bool {
-        guard var r = window?.firstResponder else { return false }
-        if let tv = r as? NSTextView, tv.isFieldEditor, let owner = tv.delegate as? NSResponder { r = owner }
-        return (r as? NSView)?.isDescendant(of: diffScroll) ?? false
+        (focusOwner as? NSView)?.isDescendant(of: diffScroll) ?? false
+    }
+
+    private var fileListHasFocus: Bool {
+        focusOwner === fileTable || focusOwner === fileFilter
     }
 
     private func findCommit(forward: Bool) {
@@ -358,8 +485,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         if table === commitTable {
             if let c = selectedCommit { loadDetails(c.hash) }
         } else if table === fileTable {
-            let i = fileTable.selectedRow
-            if i >= 0 { scrollDiff(to: i == 0 ? 0 : files[i - 1].location) }
+            let row = fileTable.selectedRow
+            guard row >= 0 else { return }
+            scrollDiff(to: fileEntry(at: row)?.location ?? 0)
         }
     }
 
@@ -387,8 +515,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     }
 
     private func show(_ d: CommitDetails) {
+        details = d
+        render(d)
+        diffView.scroll(.zero)
+        applyFileFilter()
+    }
+
+    private func render(_ d: CommitDetails) {
         let text = NSMutableAttributedString(string: d.text, attributes: [
-            .font: diffFont, .foregroundColor: NSColor.textColor,
+            .font: font, .foregroundColor: NSColor.textColor,
         ])
         for s in d.spans {
             let range = NSRange(location: s.location, length: s.length)
@@ -396,23 +531,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             case .added: text.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: range)
             case .removed: text.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range)
             case .hunk: text.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: range)
-            case .fileHeader: text.addAttribute(.font, value: diffBoldFont, range: range)
+            case .fileHeader: text.addAttribute(.font, value: boldFont, range: range)
             }
         }
         diffView.textStorage?.setAttributedString(text)
-        diffView.scroll(.zero)
-        files = d.files
-        hasDetails = true
-        fileTable.reloadData()
     }
 
     private func showDetailsError(_ stderr: String) {
+        details = nil
         diffView.textStorage?.setAttributedString(NSAttributedString(
             string: "git show failed:\n\n" + stderr,
-            attributes: [.font: diffFont, .foregroundColor: NSColor.systemRed]))
-        files = []
-        hasDetails = false
-        fileTable.reloadData()
+            attributes: [.font: font, .foregroundColor: NSColor.systemRed]))
+        applyFileFilter()
     }
 
     private func scrollDiff(to location: Int) {
@@ -436,13 +566,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     // MARK: - Table data
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        tableView === commitTable ? commits.count : (hasDetails ? files.count + 1 : 0)
+        if tableView === commitTable { return commits.count }
+        guard details != nil else { return 0 }
+        return visibleFiles.count + (showsCommitRow ? 1 : 0)
     }
 
     func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
         guard let id = column?.identifier else { return nil }
         if tableView === fileTable {
-            return textCell(tableView, id, row == 0 ? "Commit" : files[row - 1].path, truncate: .byTruncatingHead)
+            return textCell(tableView, id, fileEntry(at: row)?.path ?? "Commit", font: font, truncate: .byTruncatingHead)
         }
         let c = commits[row]
         switch id {
@@ -454,14 +586,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             }()
             cell.commit = c
             cell.graph = rows[row]
+            cell.font = font
+            cell.labelFont = labelFont
+            cell.labelBoldFont = labelBoldFont
             cell.needsDisplay = true
             return cell
         case .author:
-            return textCell(tableView, id, c.author)
+            return textCell(tableView, id, c.author, font: font)
         default:
-            let cell = textCell(tableView, id, dateFormatter.string(from: c.date))
-            cell.textField?.font = dateFont
-            return cell
+            return textCell(tableView, id, dateFormatter.string(from: c.date), font: font)
         }
     }
 }
