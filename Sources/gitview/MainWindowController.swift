@@ -77,10 +77,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         window.toolbar = toolbar
         window.toolbarStyle = .unified
 
-        let right = splitView(vertical: false, name: "gitview.split.right",
-                              [filePane(), diffScroll], defaults: [180])
+        let left = splitView(vertical: false, name: "gitview.split.left",
+                             [scroll(commitTable), filePane()], defaults: [-220], holding: 1)
         let main = splitView(vertical: true, name: "gitview.split.main",
-                             [scroll(commitTable), right], defaults: [620])
+                             [left, diffScroll], defaults: [620], holding: 0)
 
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
@@ -111,7 +111,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
         window.layoutIfNeeded()
         main.restoreOrSetDefaults()
-        right.restoreOrSetDefaults()
+        left.restoreOrSetDefaults()
         commitTable.sizeToFit()
     }
 
@@ -215,13 +215,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         return s
     }
 
-    private func splitView(vertical: Bool, name: String, _ views: [NSView], defaults: [CGFloat]) -> SavedSplitView {
+    /// `holding` is the pane that keeps its size when the window resizes.
+    private func splitView(vertical: Bool, name: String, _ views: [NSView], defaults: [CGFloat],
+                           holding: Int) -> SavedSplitView {
         let s = SavedSplitView()
         s.isVertical = vertical
         s.dividerStyle = .thin
         for v in views { s.addArrangedSubview(v) }
-        // The first pane keeps its size when the window resizes.
-        s.setHoldingPriority(.defaultLow + 1, forSubviewAt: 0)
+        s.setHoldingPriority(.defaultLow + 1, forSubviewAt: holding)
         s.defaultPositions = defaults
         s.enableAutosave(name)
         return s
@@ -601,6 +602,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
 /// Split view that restores saved divider positions, or applies defaults.
 final class SavedSplitView: NSSplitView {
+    /// Divider positions; negative values count back from the far edge.
     var defaultPositions: [CGFloat] = []
     private var hadSavedFrames = false
 
@@ -612,6 +614,7 @@ final class SavedSplitView: NSSplitView {
 
     func restoreOrSetDefaults() {
         guard !hadSavedFrames else { return }
-        for (i, p) in defaultPositions.enumerated() { setPosition(p, ofDividerAt: i) }
+        let length = isVertical ? bounds.width : bounds.height
+        for (i, p) in defaultPositions.enumerated() { setPosition(p < 0 ? length + p : p, ofDividerAt: i) }
     }
 }
