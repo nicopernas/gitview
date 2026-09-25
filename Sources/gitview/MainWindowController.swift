@@ -36,6 +36,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     private let diffScroll = NSScrollView()
     private let searchField = NSSearchField()
     private let statusLabel = NSTextField(labelWithString: "")
+    /// Full hash of the selected commit, above the file list.
+    private let hashLabel = NSTextField(labelWithString: "")
+    private let copyButton = NSButton()
     private var panes: [PaneView] = []
 
     private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -169,14 +172,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     }
 
     private func filePane() -> NSView {
+        hashLabel.textColor = .secondaryLabelColor
+        hashLabel.isSelectable = true
+        hashLabel.lineBreakMode = .byTruncatingTail
+        hashLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy hash")
+        copyButton.isBordered = false
+        copyButton.toolTip = "Copy hash"
+        copyButton.refusesFirstResponder = true
+        copyButton.target = self
+        copyButton.action = #selector(copyHash(_:))
+
         let pane = NSView()
         let list = scroll(fileTable)
-        for v in [fileFilter, list] as [NSView] {
+        for v in [hashLabel, copyButton, fileFilter, list] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             pane.addSubview(v)
         }
         NSLayoutConstraint.activate([
-            fileFilter.topAnchor.constraint(equalTo: pane.topAnchor, constant: 4),
+            hashLabel.topAnchor.constraint(equalTo: pane.topAnchor, constant: 6),
+            hashLabel.leadingAnchor.constraint(equalTo: pane.leadingAnchor, constant: 8),
+            hashLabel.trailingAnchor.constraint(lessThanOrEqualTo: copyButton.leadingAnchor, constant: -6),
+            copyButton.centerYAnchor.constraint(equalTo: hashLabel.centerYAnchor),
+            copyButton.trailingAnchor.constraint(equalTo: pane.trailingAnchor, constant: -8),
+            fileFilter.topAnchor.constraint(equalTo: hashLabel.bottomAnchor, constant: 6),
             fileFilter.leadingAnchor.constraint(equalTo: pane.leadingAnchor, constant: 6),
             fileFilter.trailingAnchor.constraint(equalTo: pane.trailingAnchor, constant: -6),
             list.topAnchor.constraint(equalTo: fileFilter.bottomAnchor, constant: 4),
@@ -250,6 +269,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             date.width = max(date.width, date.minWidth)
         }
         diffView.font = f
+        hashLabel.font = f
         commitTable.reloadData()
         fileTable.reloadData()
         if let details { render(details) }
@@ -517,6 +537,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let table = notification.object as? NSTableView else { return }
         if table === commitTable {
+            hashLabel.stringValue = selectedCommit?.hash ?? ""
             if let c = selectedCommit { loadDetails(c.hash) }
         } else if table === fileTable {
             let row = fileTable.selectedRow
@@ -590,6 +611,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     private func pageDiff(up: Bool) {
         if up { diffView.scrollPageUp(nil) } else { diffView.scrollPageDown(nil) }
+    }
+
+    @objc private func copyHash(_ sender: Any?) {
+        guard !hashLabel.stringValue.isEmpty else { return }
+        copyToPasteboard(hashLabel.stringValue)
+        // Brief checkmark so it's clear the copy happened.
+        copyButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy hash")
+        }
     }
 
     private func copyToPasteboard(_ s: String) {
