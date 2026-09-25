@@ -1,0 +1,484 @@
+import AppKit
+import GitViewCore
+
+private extension NSUserInterfaceItemIdentifier {
+    static let subject = Self("subject")
+    static let author = Self("author")
+    static let date = Self("date")
+    static let file = Self("file")
+    static let search = Self("search")
+}
+
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource,
+    NSTableViewDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
+    private let repo: URL
+    private let args: [String]
+
+    private var commits: [Commit] = []
+    private var rows: [GraphRow] = []
+    private var files: [FileEntry] = []
+    /// The file list shows "Commit" plus files once details are loaded.
+    private var hasDetails = false
+
+    private var loader: LogLoader?
+    private var loadGen = 0
+    private var loadStart = Date()
+    private var pendingHash: String?
+    private var detailsCancel: GitCancel?
+    private var detailsGen = 0
+
+    private let commitTable = KeyTableView()
+    private let fileTable = KeyTableView()
+    private let diffView = DiffTextView(usingTextLayoutManager: false)
+    private let diffScroll = NSScrollView()
+    private let searchField = NSSearchField()
+    private let statusLabel = NSTextField(labelWithString: "")
+
+    private let diffFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    private let diffBoldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
+    private let dateFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+    private let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
+
+    init(repo: URL, args: [String]) {
+        self.repo = repo
+        self.args = args
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              backing: .buffered, defer: false)
+        super.init(window: window)
+        window.delegate = self
+        window.title = ([repo.lastPathComponent] + args).joined(separator: " ")
+        buildUI(window)
+        if !window.setFrameUsingName("gitview.window") { window.center() }
+        window.setFrameAutosaveName("gitview.window")
+        startLoading(select: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    // MARK: - Layout
+
+    private func buildUI(_ window: NSWindow) {
+        setUpCommitTable()
+        setUpFileTable()
+        setUpDiffView()
+
+        let toolbar = NSToolbar(identifier: "gitview.toolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+
+        let right = splitView(vertical: false, name: "gitview.split.right",
+                              [scroll(fileTable), diffScroll], defaults: [160])
+        let main = splitView(vertical: true, name: "gitview.split.main",
+                             [scroll(commitTable), right], defaults: [620])
+
+        statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.lineBreakMode = .byTruncatingTail
+
+        let content = NSView()
+        for v in [main, statusLabel] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            main.topAnchor.constraint(equalTo: content.topAnchor),
+            main.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            main.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            statusLabel.topAnchor.constraint(equalTo: main.bottomAnchor, constant: 4),
+            statusLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
+            statusLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
+            statusLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -4),
+        ])
+        window.contentView = content
+        window.autorecalculatesKeyViewLoop = true
+        window.initialFirstResponder = commitTable
+        window.layoutIfNeeded()
+        main.restoreOrSetDefaults()
+        right.restoreOrSetDefaults()
+        commitTable.sizeToFit()
+    }
+
+    private func setUpCommitTable() {
+        let t = commitTable
+        let columns: [(NSUserInterfaceItemIdentifier, String, CGFloat, CGFloat)] = [
+            (.subject, "Subject", 300, 40), (.author, "Author", 130, 40), (.date, "Date", 128, 124),
+        ]
+        for (id, title, width, minWidth) in columns {
+            let col = NSTableColumn(identifier: id)
+            col.title = title
+            col.width = width
+            col.minWidth = minWidth
+            t.addTableColumn(col)
+        }
+        t.style = .plain
+        t.rowHeight = 22
+        t.intercellSpacing = NSSize(width: 6, height: 0)
+        t.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        t.allowsMultipleSelection = false
+        t.allowsEmptySelection = true
+        t.autosaveName = "gitview.commits"
+        t.autosaveTableColumns = true
+        t.dataSource = self
+        t.delegate = self
+        t.onSpace = { [weak self] up in self?.pageDiff(up: up) }
+        t.onCopy = { [weak self] in
+            guard let self, let c = self.selectedCommit else { return }
+            self.copyToPasteboard(c.hash)
+        }
+    }
+
+    private func setUpFileTable() {
+        let t = fileTable
+        let col = NSTableColumn(identifier: .file)
+        col.resizingMask = .autoresizingMask
+        t.addTableColumn(col)
+        t.headerView = nil
+        t.style = .plain
+        t.rowHeight = 20
+        t.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+        t.dataSource = self
+        t.delegate = self
+        t.onSpace = { [weak self] up in self?.pageDiff(up: up) }
+        t.onCopy = { [weak self] in
+            guard let self, self.fileTable.selectedRow > 0 else { return }
+            self.copyToPasteboard(self.files[self.fileTable.selectedRow - 1].path)
+        }
+    }
+
+    private func setUpDiffView() {
+        let tv = diffView
+        tv.isEditable = false
+        tv.isSelectable = true
+        tv.isRichText = false
+        tv.font = diffFont
+        tv.textContainerInset = NSSize(width: 6, height: 6)
+        tv.usesFindBar = true
+        tv.isIncrementalSearchingEnabled = true
+        tv.layoutManager?.allowsNonContiguousLayout = true
+        // No wrapping: long lines scroll horizontally.
+        tv.minSize = .zero
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        tv.isHorizontallyResizable = true
+        tv.isVerticallyResizable = true
+        tv.autoresizingMask = [.width, .height]
+        tv.textContainer?.widthTracksTextView = false
+        tv.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+
+        diffScroll.hasVerticalScroller = true
+        diffScroll.hasHorizontalScroller = true
+        diffScroll.documentView = tv
+    }
+
+    private func scroll(_ table: NSTableView) -> NSScrollView {
+        let s = NSScrollView()
+        s.hasVerticalScroller = true
+        s.documentView = table
+        return s
+    }
+
+    private func splitView(vertical: Bool, name: String, _ views: [NSView], defaults: [CGFloat]) -> SavedSplitView {
+        let s = SavedSplitView()
+        s.isVertical = vertical
+        s.dividerStyle = .thin
+        for v in views { s.addArrangedSubview(v) }
+        // The first pane keeps its size when the window resizes.
+        s.setHoldingPriority(.defaultLow + 1, forSubviewAt: 0)
+        s.defaultPositions = defaults
+        s.enableAutosave(name)
+        return s
+    }
+
+    // MARK: - Toolbar
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, NSToolbarItem.Identifier(NSUserInterfaceItemIdentifier.search.rawValue)]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard id.rawValue == NSUserInterfaceItemIdentifier.search.rawValue else { return nil }
+        let item = NSSearchToolbarItem(itemIdentifier: id)
+        item.searchField = searchField
+        item.preferredWidthForSearchField = 280
+        searchField.placeholderString = "Find subject, author or hash"
+        searchField.sendsWholeSearchString = true
+        searchField.delegate = self
+        return item
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === searchField else { return false }
+        if selector == #selector(NSResponder.insertNewline(_:)) {
+            findCommit(forward: !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false))
+            return true
+        }
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            window?.makeFirstResponder(commitTable)
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Menu actions
+
+    @objc func gvFind(_ sender: Any?) {
+        if diffHasFocus {
+            diffView.finderAction(.showFindInterface)
+        } else {
+            window?.makeFirstResponder(searchField)
+        }
+    }
+
+    @objc func gvFindNext(_ sender: Any?) {
+        if diffHasFocus { diffView.finderAction(.nextMatch) } else { findCommit(forward: true) }
+    }
+
+    @objc func gvFindPrevious(_ sender: Any?) {
+        if diffHasFocus { diffView.finderAction(.previousMatch) } else { findCommit(forward: false) }
+    }
+
+    @objc func gvReload(_ sender: Any?) {
+        startLoading(select: selectedCommit?.hash)
+    }
+
+    /// True when the diff or its find bar has keyboard focus.
+    private var diffHasFocus: Bool {
+        guard var r = window?.firstResponder else { return false }
+        if let tv = r as? NSTextView, tv.isFieldEditor, let owner = tv.delegate as? NSResponder { r = owner }
+        return (r as? NSView)?.isDescendant(of: diffScroll) ?? false
+    }
+
+    private func findCommit(forward: Bool) {
+        let query = searchField.stringValue
+        guard !query.isEmpty else { return }
+        if let i = Search.find(query, in: commits, from: commitTable.selectedRow, forward: forward) {
+            selectCommit(i)
+            showCount()
+        } else {
+            NSSound.beep()
+            statusLabel.stringValue = "No match for “\(query)” · \(countText)"
+        }
+    }
+
+    // MARK: - Loading
+
+    private func startLoading(select hash: String?) {
+        loader?.cancel()
+        loadGen += 1
+        let gen = loadGen
+        commits = []
+        rows = []
+        pendingHash = hash
+        commitTable.reloadData()
+        statusLabel.stringValue = "Loading…"
+        loadStart = Date()
+
+        let loader = LogLoader(repo: repo, args: args)
+        self.loader = loader
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = loader.run { batch in
+                DispatchQueue.main.async {
+                    guard gen == self.loadGen else { return }
+                    self.append(batch)
+                }
+            }
+            DispatchQueue.main.async {
+                guard gen == self.loadGen else { return }
+                self.loadFinished(result)
+            }
+        }
+    }
+
+    private func append(_ batch: LogBatch) {
+        let first = commits.count
+        commits += batch.commits
+        rows += batch.rows
+        commitTable.noteNumberOfRowsChanged()
+        if commitTable.selectedRow < 0 {
+            if let hash = pendingHash {
+                if let i = batch.commits.firstIndex(where: { $0.hash == hash }) {
+                    pendingHash = nil
+                    selectCommit(first + i)
+                }
+            } else {
+                selectCommit(0)
+            }
+        }
+        statusLabel.stringValue = "Loading… \(countText)"
+    }
+
+    private func loadFinished(_ result: GitResult) {
+        let ms = Int(Date().timeIntervalSince(loadStart) * 1000)
+        Log.info("loaded \(commits.count) commits in \(ms)ms")
+        if pendingHash != nil && commitTable.selectedRow < 0 && !commits.isEmpty { selectCommit(0) }
+        pendingHash = nil
+        showCount()
+        if result.status != 0 && !result.stopped {
+            statusLabel.stringValue = "git log failed"
+            let alert = NSAlert()
+            alert.messageText = "git log failed"
+            alert.informativeText = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            alert.beginSheetModal(for: window!)
+        }
+    }
+
+    private var countText: String {
+        "\(commits.count.formatted()) commits"
+    }
+
+    private func showCount() {
+        statusLabel.stringValue = countText
+    }
+
+    // MARK: - Selection and details
+
+    private var selectedCommit: Commit? {
+        let i = commitTable.selectedRow
+        return i >= 0 && i < commits.count ? commits[i] : nil
+    }
+
+    private func selectCommit(_ i: Int) {
+        commitTable.selectRowIndexes([i], byExtendingSelection: false)
+        commitTable.scrollRowToVisible(i)
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard let table = notification.object as? NSTableView else { return }
+        if table === commitTable {
+            if let c = selectedCommit { loadDetails(c.hash) }
+        } else if table === fileTable {
+            let i = fileTable.selectedRow
+            if i >= 0 { scrollDiff(to: i == 0 ? 0 : files[i - 1].location) }
+        }
+    }
+
+    private func loadDetails(_ hash: String) {
+        detailsCancel?.cancel()
+        let cancel = GitCancel()
+        detailsCancel = cancel
+        detailsGen += 1
+        let gen = detailsGen
+        let repo = repo
+        DispatchQueue.global(qos: .userInitiated).async {
+            let start = Date()
+            let (details, result) = DetailsLoader.load(repo: repo, hash: hash, cancel: cancel)
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            DispatchQueue.main.async {
+                guard gen == self.detailsGen else { return }
+                if result.status != 0 && !result.stopped {
+                    self.showDetailsError(result.stderr)
+                } else {
+                    self.show(details)
+                    Log.info("details \(hash.prefix(12)): \(details.files.count) files, truncated=\(details.truncated), \(ms)ms")
+                }
+            }
+        }
+    }
+
+    private func show(_ d: CommitDetails) {
+        let text = NSMutableAttributedString(string: d.text, attributes: [
+            .font: diffFont, .foregroundColor: NSColor.textColor,
+        ])
+        for s in d.spans {
+            let range = NSRange(location: s.location, length: s.length)
+            switch s.kind {
+            case .added: text.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: range)
+            case .removed: text.addAttribute(.foregroundColor, value: NSColor.systemRed, range: range)
+            case .hunk: text.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: range)
+            case .fileHeader: text.addAttribute(.font, value: diffBoldFont, range: range)
+            }
+        }
+        diffView.textStorage?.setAttributedString(text)
+        diffView.scroll(.zero)
+        files = d.files
+        hasDetails = true
+        fileTable.reloadData()
+    }
+
+    private func showDetailsError(_ stderr: String) {
+        diffView.textStorage?.setAttributedString(NSAttributedString(
+            string: "git show failed:\n\n" + stderr,
+            attributes: [.font: diffFont, .foregroundColor: NSColor.systemRed]))
+        files = []
+        hasDetails = false
+        fileTable.reloadData()
+    }
+
+    private func scrollDiff(to location: Int) {
+        guard let lm = diffView.layoutManager, let tc = diffView.textContainer,
+              location < diffView.string.utf16.count else { return }
+        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: location, length: 1), actualCharacterRange: nil)
+        lm.ensureLayout(forGlyphRange: glyphs)
+        let rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
+        diffView.scroll(NSPoint(x: 0, y: rect.minY))
+    }
+
+    private func pageDiff(up: Bool) {
+        if up { diffView.scrollPageUp(nil) } else { diffView.scrollPageDown(nil) }
+    }
+
+    private func copyToPasteboard(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+
+    // MARK: - Table data
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        tableView === commitTable ? commits.count : (hasDetails ? files.count + 1 : 0)
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        guard let id = column?.identifier else { return nil }
+        if tableView === fileTable {
+            return textCell(tableView, id, row == 0 ? "Commit" : files[row - 1].path, truncate: .byTruncatingHead)
+        }
+        let c = commits[row]
+        switch id {
+        case .subject:
+            let cell = (tableView.makeView(withIdentifier: id, owner: nil) as? CommitCellView) ?? {
+                let v = CommitCellView()
+                v.identifier = id
+                return v
+            }()
+            cell.commit = c
+            cell.graph = rows[row]
+            cell.needsDisplay = true
+            return cell
+        case .author:
+            return textCell(tableView, id, c.author)
+        default:
+            let cell = textCell(tableView, id, dateFormatter.string(from: c.date))
+            cell.textField?.font = dateFont
+            return cell
+        }
+    }
+}
+
+/// Split view that restores saved divider positions, or applies defaults.
+final class SavedSplitView: NSSplitView {
+    var defaultPositions: [CGFloat] = []
+    private var hadSavedFrames = false
+
+    /// Call before the first layout: autosave writes frames as soon as it lays out.
+    func enableAutosave(_ name: String) {
+        hadSavedFrames = UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \(name)") != nil
+        autosaveName = name
+    }
+
+    func restoreOrSetDefaults() {
+        guard !hadSavedFrames else { return }
+        for (i, p) in defaultPositions.enumerated() { setPosition(p, ofDividerAt: i) }
+    }
+}

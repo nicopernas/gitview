@@ -8,14 +8,16 @@ public enum Log {
 
     private static let lock = NSLock()
     private static var handle: FileHandle?
-    private static let echo = isatty(STDERR_FILENO) != 0
+    private static var echo = false
     private static let timeFormatter = formatter("yyyy-MM-dd HH:mm:ss.SSS")
 
     /// Opens today's file, deleting old ones. Returns the file's URL.
+    /// `echo` also copies lines to stderr.
     @discardableResult
-    public static func setup(dir: URL = defaultDir) -> URL {
+    public static func setup(dir: URL = defaultDir, echo: Bool = false) -> URL {
         lock.lock()
         defer { lock.unlock() }
+        self.echo = echo
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         prune(dir)
         let url = dir.appendingPathComponent(formatter("yyyy-MM-dd").string(from: Date()) + ".log")
