@@ -72,7 +72,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
   - Diffs over 50,000 lines are cut with a note.
   - Loaded in the background; stale results are dropped when the selection changes.
 - The focused pane (commits, files incl. filter, diff incl. find bar) gets a thin border: accent color, gray when the window is inactive.
-- Status bar at the bottom: commit count / messages on the left, full hash of the selected commit (selectable) on the right.
+- Status bar at the bottom.
 - Split sizes and window frame are saved and restored.
 
 ## Keys

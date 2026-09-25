@@ -36,8 +36,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     private let diffScroll = NSScrollView()
     private let searchField = NSSearchField()
     private let statusLabel = NSTextField(labelWithString: "")
-    /// Full hash of the selected commit, selectable so it can be copied.
-    private let hashLabel = NSTextField(labelWithString: "")
     private var panes: [PaneView] = []
 
     private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -93,12 +91,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
-        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        hashLabel.textColor = .secondaryLabelColor
-        hashLabel.isSelectable = true
 
         let content = NSView()
-        for v in [main, statusLabel, hashLabel] as [NSView] {
+        for v in [main, statusLabel] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
@@ -108,10 +103,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             main.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             statusLabel.topAnchor.constraint(equalTo: main.bottomAnchor, constant: 4),
             statusLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
+            statusLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
             statusLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -4),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: hashLabel.leadingAnchor, constant: -12),
-            hashLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
-            hashLabel.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
         ])
         window.contentView = content
 
@@ -257,7 +250,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             date.width = max(date.width, date.minWidth)
         }
         diffView.font = f
-        hashLabel.font = fm.convert(f, toSize: NSFont.smallSystemFontSize)
         commitTable.reloadData()
         fileTable.reloadData()
         if let details { render(details) }
@@ -525,7 +517,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let table = notification.object as? NSTableView else { return }
         if table === commitTable {
-            hashLabel.stringValue = selectedCommit?.hash ?? ""
             if let c = selectedCommit { loadDetails(c.hash) }
         } else if table === fileTable {
             let row = fileTable.selectedRow
