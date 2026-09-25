@@ -2,17 +2,19 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let repo: URL
+    private let workDir: URL
     private let args: [String]
     private var controller: MainWindowController?
 
-    init(repo: URL, args: [String]) {
+    init(repo: URL, workDir: URL, args: [String]) {
         self.repo = repo
+        self.workDir = workDir
         self.args = args
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMenu()
-        let c = MainWindowController(repo: repo, args: args)
+        let c = MainWindowController(repo: repo, workDir: workDir, args: args)
         controller = c
         c.showWindow(nil)
         // For testing: open behind other windows without taking focus.

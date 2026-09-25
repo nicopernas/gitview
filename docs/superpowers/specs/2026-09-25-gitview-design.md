@@ -17,16 +17,18 @@ A native macOS replacement for gitk. Read-only history viewer, nothing more.
 
 - `gitview [any git log args]`, run inside a repo. Examples: `--all`, `main..feature`, `-- src/`, `--author=bob`.
 - Parent process checks the repo with `git rev-parse --show-toplevel`. On failure: print git's error, exit 1.
-- On success: re-spawn itself with `POSIX_SPAWN_SETSID`, stdin `/dev/null`, stdout/stderr to the log file, then exit. The terminal is free right away.
-- `GITVIEW_FOREGROUND=1` skips the detach (debugging).
+- On success: ask macOS (`NSWorkspace.openApplication`, new instance) to start `gitview.app` with the same args and `GITVIEW_CWD` set to the launch directory, then exit. The terminal is free right away.
+  - Why not spawn a detached process: macOS puts it in the terminal's process group ("coalition"), and on quit shows "App Running in Background" because the terminal's processes are still running.
+- git runs in the launch directory, so relative paths in args work from subdirectories.
+- `GITVIEW_FOREGROUND=1`, or a binary outside an .app (dev build), runs in the terminal instead.
 - If `git log` fails (bad args), the window shows git's error.
-- `make install` copies the binary to `~/.local/bin`.
+- `make install` builds `~/.local/share/gitview/gitview.app` (bundle id `local.gitview`, ad-hoc signed) and links `~/.local/bin/gitview` to its binary.
 
 ## Logs
 
 - `~/.gitview/logs/YYYY-MM-DD.log`, one file per day, lines prefixed with timestamp and pid.
 - Logged: every git command (args, exit code, duration, stderr), load progress and totals, diff load times, errors.
-- The detached process's stdout/stderr go to the same file.
+- The app process sends its stdout/stderr to the same file.
 - Files older than 14 days are deleted at startup.
 
 ## Structure
@@ -77,7 +79,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
 
 - Up/Down, Page Up/Down, Home/End: move in commit list.
 - Space / Shift+Space: scroll diff down / up.
-- Tab / Shift+Tab: next / previous pane (commits, files, diff). Never lands on a search field.
+- Tab / Shift+Tab: next / previous pane (commits, diff, files). Never lands on a search field.
 - Cmd+F or /: focus commit find field. When the file list has focus: the file filter. When the diff has focus: native find bar in the diff.
 - Enter or Cmd+G / Shift+Cmd+G: next / previous match.
 - Cmd+R: reload. Cmd+W / Cmd+Q: close / quit.

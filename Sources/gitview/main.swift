@@ -2,12 +2,17 @@ import AppKit
 import GitViewCore
 
 let env = ProcessInfo.processInfo.environment
-let foreground = env["GITVIEW_FOREGROUND"] != nil
-let detached = env["GITVIEW_DETACHED"] != nil
-let logFile = Log.setup(echo: foreground)
 let args = Array(CommandLine.arguments.dropFirst())
+/// Set only on the app process that `launchApp` asks macOS to start.
+let isApp = env["GITVIEW_CWD"] != nil
+let appBundle = Bundle.main.executableURL.flatMap(AppBundle.locate)
+/// Outside an .app (e.g. a dev build) there's nothing to launch, so run in the terminal.
+let runHere = isApp || env["GITVIEW_FOREGROUND"] != nil || appBundle == nil
+let logFile = Log.setup(echo: runHere && !isApp)
+if isApp { redirectOutput(to: logFile) }
 
-let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+// Apps started by macOS run in "/", so the launcher passes its working directory.
+let cwd = URL(fileURLWithPath: env["GITVIEW_CWD"] ?? FileManager.default.currentDirectoryPath)
 let top = Git.run(["rev-parse", "--show-toplevel"], in: cwd)
 guard top.status == 0 else {
     FileHandle.standardError.write(Data(top.stderr.utf8))
@@ -15,49 +20,51 @@ guard top.status == 0 else {
 }
 let repo = URL(fileURLWithPath: top.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
 
-if !foreground && !detached {
-    exit(detach(logFile: logFile) ? 0 : 1)
+if !runHere, let appBundle {
+    exit(launchApp(appBundle) ? 0 : 1)
 }
 
-Log.info("start repo=\(repo.path) args=\(args)")
+Log.info("start repo=\(repo.path) cwd=\(cwd.path) args=\(args)")
 NSSetUncaughtExceptionHandler { e in
     Log.error("uncaught exception: \(e)\n\(e.callStackSymbols.joined(separator: "\n"))")
 }
 let app = NSApplication.shared
-let delegate = AppDelegate(repo: repo, args: args)
+let delegate = AppDelegate(repo: repo, workDir: cwd, args: args)
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
 
-/// Starts a copy of this binary in its own session, so the terminal is free.
-func detach(logFile: URL) -> Bool {
-    guard let exe = Bundle.main.executablePath else { return false }
+/// Asks macOS to start a new instance of the app. Started this way it gets its own
+/// process group; started from the shell, macOS thinks it keeps running after quit.
+func launchApp(_ bundle: URL) -> Bool {
+    let config = NSWorkspace.OpenConfiguration()
+    config.arguments = args
+    config.environment = env.merging(["GITVIEW_CWD": cwd.path]) { $1 }
+    config.createsNewApplicationInstance = true
+    config.activates = env["GITVIEW_NO_ACTIVATE"] == nil
 
-    var attr: posix_spawnattr_t?
-    posix_spawnattr_init(&attr)
-    defer { posix_spawnattr_destroy(&attr) }
-    posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
-
-    var actions: posix_spawn_file_actions_t?
-    posix_spawn_file_actions_init(&actions)
-    defer { posix_spawn_file_actions_destroy(&actions) }
-    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-    posix_spawn_file_actions_addopen(&actions, 1, logFile.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-    posix_spawn_file_actions_adddup2(&actions, 1, 2)
-
-    let argv: [UnsafeMutablePointer<CChar>?] = ([exe] + args).map { strdup($0) } + [nil]
-    let envStrings = env.map { "\($0.key)=\($0.value)" } + ["GITVIEW_DETACHED=1"]
-    let envp: [UnsafeMutablePointer<CChar>?] = envStrings.map { strdup($0) } + [nil]
-    defer { (argv + envp).forEach { free($0) } }
-
-    var pid: pid_t = 0
-    let rc = posix_spawn(&pid, exe, &actions, &attr, argv, envp)
-    guard rc == 0 else {
-        let msg = "gitview: failed to start: \(String(cString: strerror(rc)))"
+    var failure: Error?
+    let done = DispatchSemaphore(value: 0)
+    NSWorkspace.shared.openApplication(at: bundle, configuration: config) { running, error in
+        failure = error
+        if let running { Log.info("launched as pid \(running.processIdentifier)") }
+        done.signal()
+    }
+    done.wait()
+    if let failure {
+        let msg = "gitview: failed to start: \(failure.localizedDescription)"
         Log.error(msg)
         FileHandle.standardError.write(Data((msg + "\n").utf8))
         return false
     }
-    Log.info("detached as pid \(pid)")
     return true
+}
+
+/// Sends stdout/stderr (crash messages) to the log file.
+func redirectOutput(to file: URL) {
+    let fd = open(file.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+    guard fd >= 0 else { return }
+    dup2(fd, STDOUT_FILENO)
+    dup2(fd, STDERR_FILENO)
+    close(fd)
 }

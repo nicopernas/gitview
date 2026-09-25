@@ -12,6 +12,8 @@ private extension NSUserInterfaceItemIdentifier {
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource,
     NSTableViewDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
     private let repo: URL
+    /// Where git runs: the launch directory, so relative paths in `args` work.
+    private let workDir: URL
     private let args: [String]
 
     private var commits: [Commit] = []
@@ -46,8 +48,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         return f
     }()
 
-    init(repo: URL, args: [String]) {
+    init(repo: URL, workDir: URL, args: [String]) {
         self.repo = repo
+        self.workDir = workDir
         self.args = args
         let window = MainWindow(contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
                                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -375,12 +378,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     @objc func gvNextPane(_ sender: Any?) { movePane(by: 1) }
     @objc func gvPreviousPane(_ sender: Any?) { movePane(by: -1) }
 
-    /// Cycles focus through commits, files and diff.
+    /// Cycles focus through commits, diff and files.
     private func movePane(by step: Int) {
+        let order = [0, 2, 1] // indexes into `panes` and `targets`
         let targets: [NSView] = [commitTable, fileTable, diffView]
         let owner = focusOwner as? NSView
-        let current = panes.firstIndex { owner?.isDescendant(of: $0) ?? false } ?? 0
-        window?.makeFirstResponder(targets[(current + step + targets.count) % targets.count])
+        let pane = panes.firstIndex { owner?.isDescendant(of: $0) ?? false } ?? 0
+        let next = order[((order.firstIndex(of: pane) ?? 0) + step + order.count) % order.count]
+        window?.makeFirstResponder(targets[next])
     }
 
     func windowDidBecomeKey(_ notification: Notification) { updatePaneFocus() }
@@ -440,7 +445,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         statusLabel.stringValue = "Loading…"
         loadStart = Date()
 
-        let loader = LogLoader(repo: repo, args: args)
+        let loader = LogLoader(repo: workDir, args: args)
         self.loader = loader
         DispatchQueue.global(qos: .userInitiated).async {
             let result = loader.run { batch in
@@ -526,10 +531,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         detailsCancel = cancel
         detailsGen += 1
         let gen = detailsGen
-        let repo = repo
+        let workDir = workDir
         DispatchQueue.global(qos: .userInitiated).async {
             let start = Date()
-            let (details, result) = DetailsLoader.load(repo: repo, hash: hash, cancel: cancel)
+            let (details, result) = DetailsLoader.load(repo: workDir, hash: hash, cancel: cancel)
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             DispatchQueue.main.async {
                 guard gen == self.detailsGen else { return }

@@ -5,7 +5,7 @@ A native macOS git history viewer. Like gitk, without Tk.
 ## Install
 
 ```
-make install    # copies the binary to ~/.local/bin
+make install    # builds ~/.local/share/gitview/gitview.app, links ~/.local/bin/gitview
 ```
 
 Only needs the Xcode Command Line Tools.
@@ -21,7 +21,7 @@ gitview main..feature
 gitview -- src/
 ```
 
-The terminal is free right away. Set `GITVIEW_FOREGROUND=1` to keep it attached (logs also print to the terminal).
+The terminal is free right away. Set `GITVIEW_FOREGROUND=1` to keep it attached (logs also print to the terminal). A dev build (`swift build`) always runs attached.
 
 ## Keys
 
