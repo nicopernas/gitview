@@ -13,13 +13,20 @@ private func handleTab(_ event: NSEvent, in window: NSWindow?) -> Bool {
     return true
 }
 
+/// "/" acts like Cmd+F (Find). Returns true if handled.
+private func handleSlash(_ event: NSEvent, from sender: NSResponder) -> Bool {
+    guard event.characters == "/", event.modifierFlags.isDisjoint(with: [.command, .control, .option]) else { return false }
+    NSApp.sendAction(#selector(MainWindowController.gvFind(_:)), to: nil, from: sender)
+    return true
+}
+
 /// Table that sends Space to the diff, Tab to the next pane, and Cmd+C to `onCopy`.
 final class KeyTableView: NSTableView {
     var onSpace: ((_ up: Bool) -> Void)?
     var onCopy: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        if handleTab(event, in: window) { return }
+        if handleTab(event, in: window) || handleSlash(event, from: self) { return }
         if event.charactersIgnoringModifiers == " " {
             onSpace?(event.modifierFlags.contains(.shift))
             return
@@ -34,7 +41,7 @@ final class KeyTableView: NSTableView {
 
 final class DiffTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
-        if handleTab(event, in: window) { return }
+        if handleTab(event, in: window) || handleSlash(event, from: self) { return }
         if event.charactersIgnoringModifiers == " " {
             if event.modifierFlags.contains(.shift) { scrollPageUp(nil) } else { scrollPageDown(nil) }
             return
