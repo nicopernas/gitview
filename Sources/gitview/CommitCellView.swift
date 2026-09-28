@@ -18,6 +18,14 @@ final class CommitCellView: NSTableCellView {
 
     override var isFlipped: Bool { true }
 
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Since macOS 14 views don't clip by default; many ref labels would spill into the next columns.
+        clipsToBounds = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet { needsDisplay = true }
     }
@@ -57,11 +65,12 @@ final class CommitCellView: NSTableCellView {
         // Same highlighting as nvim's gitcommit syntax; plain white on the selection.
         for s in CommitMessageSyntax.subject(commit.subject) {
             let range = NSRange(location: s.location, length: s.length)
-            if s.kind == .subject { subject.addAttribute(.font, value: boldFont, range: range) }
-            if !selected { subject.addAttribute(.foregroundColor, value: Palette.color(s.kind), range: range) }
+            if Palette.isBold(s.kind, inList: true) { subject.addAttribute(.font, value: boldFont, range: range) }
+            if !selected, let c = Palette.color(s.kind) { subject.addAttribute(.foregroundColor, value: c, range: range) }
         }
         let textH = ceil(boldFont.ascender - boldFont.descender)
-        let rect = NSRect(x: textX, y: (h - textH) / 2, width: max(0, bounds.width - textX), height: textH)
+        guard textX < bounds.width else { return }
+        let rect = NSRect(x: textX, y: (h - textH) / 2, width: bounds.width - textX, height: textH)
         subject.draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     }
 

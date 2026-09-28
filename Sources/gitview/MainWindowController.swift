@@ -596,8 +596,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         }
         for m in d.messageSpans {
             let range = NSRange(location: m.location, length: m.length)
-            text.addAttribute(.foregroundColor, value: Palette.color(m.kind), range: range)
-            if m.kind == .subject { text.addAttribute(.font, value: boldFont, range: range) }
+            if let c = Palette.color(m.kind) { text.addAttribute(.foregroundColor, value: c, range: range) }
+            if Palette.isBold(m.kind, inList: false) { text.addAttribute(.font, value: boldFont, range: range) }
         }
         // A gap above each file, on top of the band DiffTextView draws behind its header.
         let gap = NSMutableParagraphStyle()

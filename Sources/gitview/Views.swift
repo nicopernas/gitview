@@ -173,19 +173,27 @@ enum Palette {
     static let headerBand = dynamic(light: 0xE3E3E3, dark: 0x383838)
 
     // Commit message colors from nvim's onedark theme: "light" and "darker" styles.
-    private static let orange = dynamic(light: 0xC18401, dark: 0xCC9057)
-    private static let purple = dynamic(light: 0xA626A4, dark: 0xBF68D9)
     private static let red = dynamic(light: 0xE45649, dark: 0xE55561)
     private static let blue = dynamic(light: 0x4078F2, dark: 0x4FA6ED)
     private static let grey = dynamic(light: 0x818387, dark: 0x7A818E)
 
-    static func color(_ kind: MessageKind) -> NSColor {
+    /// Color for a part of a commit message; nil keeps the normal text color.
+    static func color(_ kind: MessageKind) -> NSColor? {
         switch kind {
-        case .subject: orange
-        case .type: purple
-        case .scope, .bang, .trailerToken, .breakingChange: red
+        case .subject, .type, .scope, .bang: nil
+        case .trailerToken, .breakingChange: red
         case .punctuation: grey
         case .subjectPrefix: blue
         }
     }
+
+    /// The prefix ("solver", "feat(ui)!") is bold; the subject line only in the diff.
+    static func isBold(_ kind: MessageKind, inList: Bool) -> Bool {
+        switch kind {
+        case .type, .scope, .bang: true
+        case .subject: !inList
+        default: false
+        }
+    }
 }
+
