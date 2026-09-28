@@ -1,6 +1,7 @@
 import AppKit
+import GitViewCore
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let repo: URL
     private let workDir: URL
     private let args: [String]
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        apply(Theme.load())
         NSApp.mainMenu = makeMenu()
         let c = MainWindowController(repo: repo, workDir: workDir, args: args)
         controller = c
@@ -57,12 +59,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let view = submenu(main, "View")
         view.addItem(withTitle: "Reload", action: #selector(MainWindowController.gvReload(_:)), keyEquivalent: "r")
+        view.addItem(.separator())
+        let appearance = NSMenu(title: "Appearance")
+        for (theme, title) in [(Theme.light, "Light"), (.dark, "Dark"), (.system, "System")] {
+            let item = appearance.addItem(withTitle: title, action: #selector(setTheme(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = theme.rawValue
+        }
+        view.addItem(withTitle: "Appearance", action: nil, keyEquivalent: "").submenu = appearance
 
         let window = submenu(main, "Window")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
         return main
+    }
+
+    @objc private func setTheme(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let theme = Theme(rawValue: raw) else { return }
+        theme.save()
+        apply(theme)
+        Log.info("theme: \(raw)")
+    }
+
+    private func apply(_ theme: Theme) {
+        switch theme {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
+    /// Checks the current theme in the Appearance menu.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(setTheme(_:)) {
+            item.state = (item.representedObject as? String) == Theme.load().rawValue ? .on : .off
+        }
+        return true
     }
 
     @objc private func showAbout(_ sender: Any?) {

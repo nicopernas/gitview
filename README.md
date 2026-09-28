@@ -23,7 +23,7 @@ Most other git tools try to be clever: staging, rebasing, dashboards. We only wa
 - **Changed files**, with a filter. Click one to jump to it in the diff.
 - **The diff**, colored, with long lines wrapped.
 
-The window, panel sizes and font are remembered.
+The window, panel sizes, font and theme (View → Appearance: Light, Dark or System) are remembered.
 
 ## Install
 
