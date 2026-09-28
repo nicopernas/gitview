@@ -594,7 +594,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             case .fileHeader: text.addAttribute(.font, value: boldFont, range: range)
             }
         }
+        // A gap above each file, on top of the band DiffTextView draws behind its header.
+        let gap = NSMutableParagraphStyle()
+        gap.paragraphSpacingBefore = ceil(NSLayoutManager().defaultLineHeight(for: font))
+        let blocks = d.fileHeaderBlocks.map { NSRange(location: $0.location, length: $0.length) }
+        for b in blocks { text.addAttribute(.paragraphStyle, value: gap, range: NSRange(location: b.location, length: 1)) }
         diffView.textStorage?.setAttributedString(text)
+        diffView.headerBlocks = blocks
     }
 
     private func showDetailsError(_ stderr: String) {
@@ -602,6 +608,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         diffView.textStorage?.setAttributedString(NSAttributedString(
             string: "git show failed:\n\n" + stderr,
             attributes: [.font: font, .foregroundColor: NSColor.systemRed]))
+        diffView.headerBlocks = []
         applyFileFilter()
     }
 
@@ -611,7 +618,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: location, length: 1), actualCharacterRange: nil)
         lm.ensureLayout(forGlyphRange: glyphs)
         let rect = lm.boundingRect(forGlyphRange: glyphs, in: tc)
-        diffView.scroll(NSPoint(x: 0, y: rect.minY))
+        // A little above the text, so the file's band shows in full.
+        diffView.scroll(NSPoint(x: 0, y: max(0, rect.minY - 4)))
     }
 
     private func pageDiff(up: Bool) {

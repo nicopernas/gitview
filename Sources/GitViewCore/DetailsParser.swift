@@ -21,6 +21,20 @@ public struct CommitDetails: Sendable {
     public var files: [FileEntry]
     public var spans: [DiffSpan]
     public var truncated: Bool
+
+    /// Each file's header lines (from "diff --git" to before the first hunk) as one span.
+    public var fileHeaderBlocks: [DiffSpan] {
+        var blocks: [DiffSpan] = []
+        for s in spans where s.kind == .fileHeader {
+            if let last = blocks.last, last.location + last.length + 1 == s.location {
+                blocks[blocks.count - 1] = DiffSpan(kind: .fileHeader, location: last.location,
+                                                    length: s.location + s.length - last.location)
+            } else {
+                blocks.append(s)
+            }
+        }
+        return blocks
+    }
 }
 
 /// Builds `CommitDetails` from `git show` output, one line at a time.

@@ -38,6 +38,30 @@ final class KeyTableView: NSTableView {
 }
 
 final class DiffTextView: NSTextView {
+    /// Character ranges of each file's header lines; drawn on a full-width band.
+    var headerBlocks: [NSRange] = [] {
+        didSet { needsDisplay = true }
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        guard !headerBlocks.isEmpty, let lm = layoutManager, let tc = textContainer else { return }
+        let origin = textContainerOrigin
+        let visible = lm.glyphRange(forBoundingRect: rect.offsetBy(dx: -origin.x, dy: -origin.y), in: tc)
+        let chars = lm.characterRange(forGlyphRange: visible, actualGlyphRange: nil)
+        for block in headerBlocks where NSIntersectionRange(block, chars).length > 0 {
+            var used = NSRect.null
+            let glyphs = lm.glyphRange(forCharacterRange: block, actualCharacterRange: nil)
+            lm.enumerateLineFragments(forGlyphRange: glyphs) { _, lineUsed, _, _, _ in used = used.union(lineUsed) }
+            guard !used.isNull else { continue }
+            let band = NSRect(x: bounds.minX, y: used.minY + origin.y - 3, width: bounds.width, height: used.height + 6)
+            Palette.headerBand.setFill()
+            band.fill()
+            NSColor.separatorColor.setFill()
+            NSRect(x: band.minX, y: band.minY, width: band.width, height: 1).fill()
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         if handleTab(event, from: self) || handleSlash(event, from: self) { return }
         if event.charactersIgnoringModifiers == " " {
@@ -138,5 +162,10 @@ enum Palette {
     /// Soft gray: #F3F3F3 in light mode, #2A2A2A in dark mode.
     static let background = NSColor(name: "gitview.background") { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x2A2A2A) : rgb(0xF3F3F3)
+    }
+
+    /// Band behind each file's header in the diff, a step away from `background`.
+    static let headerBand = NSColor(name: "gitview.headerBand") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x383838) : rgb(0xE3E3E3)
     }
 }

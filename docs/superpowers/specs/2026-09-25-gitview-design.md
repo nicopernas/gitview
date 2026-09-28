@@ -66,7 +66,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
 - Left: commit table with three columns: graph + ref labels + subject, author, date (`yyyy-MM-dd HH:mm`, local).
   - Ref labels: local branch, remote branch, tag, with different colors. HEAD's branch is bold.
 - Left bottom (under the commit table): full hash of the selected commit with a copy button, then the filter field and file list. First entry "Commit", then changed files. Click scrolls the diff to that file. Typing in the filter hides files that don't match (substring, ignoring case); the "Commit" entry is hidden while filtering.
-- Right (full height): header (hash, parents, author, committer, dates, full message) then diff. Long lines wrap.
+- Right (full height): header (hash, parents, author, committer, dates, full message) then diff. Long lines wrap. Each file starts with a gap and a full-width band behind its header lines (`diff --git` to `+++`).
 - One font for list, file list and diff. Default Source Code Pro 12 (falls back to the system monospaced font). Changed with the font panel (Cmd+T) or Bigger/Smaller/Reset (Cmd+= / Cmd+- / Cmd+0); saved in user defaults.
   - Added green, removed red, hunk headers blue, file headers bold. Merges show git's combined diff.
   - Diffs over 50,000 lines are cut with a note.

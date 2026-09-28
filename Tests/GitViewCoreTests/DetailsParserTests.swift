@@ -71,6 +71,25 @@ private func text(_ d: CommitDetails, _ s: DiffSpan) -> String {
         #expect(d.files == [FileEntry(path: "f", location: 4)])
     }
 
+    @Test func groupsFileHeaderLinesIntoBlocks() {
+        let d = parse([
+            "commit abc",
+            "diff --git a/one b/one",
+            "index 1..2 100644",
+            "--- a/one",
+            "+++ b/one",
+            "@@ -1 +1 @@",
+            "-x",
+            "diff --git a/two b/two",
+            "new file mode 100644",
+            "@@ -0,0 +1 @@",
+        ])
+        #expect(d.fileHeaderBlocks.map { text(d, $0) } == [
+            "diff --git a/one b/one\nindex 1..2 100644\n--- a/one\n+++ b/one",
+            "diff --git a/two b/two\nnew file mode 100644",
+        ])
+    }
+
     @Test func truncatesAtMaxLines() {
         var p = DetailsParser(maxLines: 2)
         let accepted = [p.add("one"), p.add("two"), p.add("three")]
