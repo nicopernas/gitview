@@ -20,6 +20,8 @@ public struct CommitDetails: Sendable {
     public var text: String
     public var files: [FileEntry]
     public var spans: [DiffSpan]
+    /// Highlights in the commit message (subject and body), with absolute locations.
+    public var messageSpans: [MessageSpan]
     public var truncated: Bool
 
     /// Each file's header lines (from "diff --git" to before the first hunk) as one span.
@@ -40,13 +42,16 @@ public struct CommitDetails: Sendable {
 /// Builds `CommitDetails` from `git show` output, one line at a time.
 public struct DetailsParser {
     private enum State { case header, fileHeader, hunk }
+    /// Within the header: metadata lines, then (after a blank line) subject, then body.
+    private enum Message { case meta, subject, body }
 
     private let maxLines: Int
     private var lineCount = 0
     private var state = State.header
+    private var message = Message.meta
     private var hunkColumns = 1
     private var location = 0
-    private var d = CommitDetails(text: "", files: [], spans: [], truncated: false)
+    private var d = CommitDetails(text: "", files: [], spans: [], messageSpans: [], truncated: false)
 
     public init(maxLines: Int = 50_000) {
         self.maxLines = maxLines
@@ -68,6 +73,8 @@ public struct DetailsParser {
             hunkColumns = line.prefix(while: { $0 == "@" }).count - 1
         }
 
+        if state == .header { addMessageSpans(line) }
+
         let length = line.utf16.count
         if let kind = kind(of: line) {
             d.spans.append(DiffSpan(kind: kind, location: location, length: length))
@@ -82,6 +89,22 @@ public struct DetailsParser {
         var out = d
         if out.truncated { out.text += "\n[gitview: diff cut at \(maxLines) lines]\n" }
         return out
+    }
+
+    /// The message comes after the first blank line, indented by 4 spaces by `git show`.
+    private mutating func addMessageSpans(_ line: String) {
+        switch message {
+        case .meta:
+            if line.isEmpty { message = .subject }
+        case .subject, .body:
+            let indent = min(line.prefix(while: { $0 == " " }).count, 4)
+            let content = String(line.dropFirst(indent))
+            let spans = message == .subject ? CommitMessageSyntax.subject(content) : CommitMessageSyntax.bodyLine(content)
+            for s in spans where s.length > 0 {
+                d.messageSpans.append(MessageSpan(kind: s.kind, location: location + indent + s.location, length: s.length))
+            }
+            message = .body
+        }
     }
 
     private func kind(of line: String) -> LineKind? {

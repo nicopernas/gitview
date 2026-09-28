@@ -1,4 +1,5 @@
 import AppKit
+import GitViewCore
 
 private let tabKey: UInt16 = 48
 
@@ -159,13 +160,32 @@ enum Palette {
                 blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// Soft gray: #F3F3F3 in light mode, #2A2A2A in dark mode.
-    static let background = NSColor(name: "gitview.background") { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x2A2A2A) : rgb(0xF3F3F3)
+    private static func dynamic(light: UInt32, dark: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(dark) : rgb(light)
+        }
     }
 
+    /// Soft gray: #F3F3F3 in light mode, #2A2A2A in dark mode.
+    static let background = dynamic(light: 0xF3F3F3, dark: 0x2A2A2A)
+
     /// Band behind each file's header in the diff, a step away from `background`.
-    static let headerBand = NSColor(name: "gitview.headerBand") { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x383838) : rgb(0xE3E3E3)
+    static let headerBand = dynamic(light: 0xE3E3E3, dark: 0x383838)
+
+    // Commit message colors from nvim's onedark theme: "light" and "darker" styles.
+    private static let orange = dynamic(light: 0xC18401, dark: 0xCC9057)
+    private static let purple = dynamic(light: 0xA626A4, dark: 0xBF68D9)
+    private static let red = dynamic(light: 0xE45649, dark: 0xE55561)
+    private static let blue = dynamic(light: 0x4078F2, dark: 0x4FA6ED)
+    private static let grey = dynamic(light: 0x818387, dark: 0x7A818E)
+
+    static func color(_ kind: MessageKind) -> NSColor {
+        switch kind {
+        case .subject: orange
+        case .type: purple
+        case .scope, .bang, .trailerToken, .breakingChange: red
+        case .punctuation: grey
+        case .subjectPrefix: blue
+        }
     }
 }

@@ -22,6 +22,7 @@ Most other git tools try to be clever: staging, rebasing, dashboards. We only wa
 - **The selected commit's hash**, with a copy button.
 - **Changed files**, with a filter. Click one to jump to it in the diff.
 - **The diff**, colored, with long lines wrapped.
+- **Commit messages highlighted like vim/nvim** (`gitcommit` syntax with onedark colors): the subject, `type(scope)!:` prefixes, `fixup!`/`amend!`, and trailers like `Co-Authored-By:`. Subjects in the commit list too.
 
 The window, panel sizes, font and theme (View → Appearance: Light, Dark or System) are remembered.
 

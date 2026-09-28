@@ -72,6 +72,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
   - Diffs over 50,000 lines are cut with a note.
   - Loaded in the background; stale results are dropped when the selection changes.
 - The focused pane (commits, files incl. filter, diff incl. find bar) gets a thin border: accent color, gray when the window is inactive.
+- Commit messages are highlighted like nvim's tree-sitter-gitcommit grammar (`CommitMessageSyntax`), with onedark colors ("darker" style in dark mode, "light" in light mode): subject bold orange, `type` purple, `(scope)` / `!` / trailer tokens / `BREAKING CHANGE:` red, `( ) :` grey, `fixup!` / `amend!` blue. Applied to the message in the diff and to subjects in the commit list (plain white on a selected row).
 - Pane backgrounds are a soft gray instead of the system white / near black: #F3F3F3 light, #2A2A2A dark.
 - Theme: View → Appearance → Light, Dark or System (default). Saved in user defaults; applies to the current window right away and to new windows.
 - Status bar at the bottom.

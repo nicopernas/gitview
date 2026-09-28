@@ -594,6 +594,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             case .fileHeader: text.addAttribute(.font, value: boldFont, range: range)
             }
         }
+        for m in d.messageSpans {
+            let range = NSRange(location: m.location, length: m.length)
+            text.addAttribute(.foregroundColor, value: Palette.color(m.kind), range: range)
+            if m.kind == .subject { text.addAttribute(.font, value: boldFont, range: range) }
+        }
         // A gap above each file, on top of the band DiffTextView draws behind its header.
         let gap = NSMutableParagraphStyle()
         gap.paragraphSpacingBefore = ceil(NSLayoutManager().defaultLineHeight(for: font))
@@ -665,6 +670,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             cell.commit = c
             cell.graph = rows[row]
             cell.font = font
+            cell.boldFont = boldFont
             cell.labelFont = labelFont
             cell.labelBoldFont = labelBoldFont
             cell.needsDisplay = true

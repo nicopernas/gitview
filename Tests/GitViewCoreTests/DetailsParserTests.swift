@@ -90,6 +90,23 @@ private func text(_ d: CommitDetails, _ s: DiffSpan) -> String {
         ])
     }
 
+    @Test func highlightsCommitMessage() {
+        let d = parse([
+            "commit abc",
+            "Author: Ada <ada@example.com>",
+            "",
+            "    feat(ui): add button",
+            "",
+            "    Body text: not a trailer",
+            "    Co-Authored-By: Bob <bob@example.com>",
+            "",
+            "diff --git a/f b/f",
+        ])
+        let got = d.messageSpans.map { ($0.kind, text(d, DiffSpan(kind: .fileHeader, location: $0.location, length: $0.length))) }
+        #expect(got.map(\.0) == [.subject, .type, .punctuation, .scope, .punctuation, .punctuation, .trailerToken])
+        #expect(got.map(\.1) == ["feat(ui): add button", "feat", "(", "ui", ")", ":", "Co-Authored-By: "])
+    }
+
     @Test func truncatesAtMaxLines() {
         var p = DetailsParser(maxLines: 2)
         let accepted = [p.add("one"), p.add("two"), p.add("three")]

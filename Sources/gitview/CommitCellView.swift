@@ -12,6 +12,7 @@ final class CommitCellView: NSTableCellView {
     var commit: Commit?
     var graph: GraphRow?
     var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    var boldFont = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
     var labelFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
     var labelBoldFont = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
 
@@ -48,14 +49,20 @@ final class CommitCellView: NSTableCellView {
 
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
-        let attrs: [NSAttributedString.Key: Any] = [
+        let subject = NSMutableAttributedString(string: commit.subject, attributes: [
             .font: font,
             .foregroundColor: selected ? NSColor.alternateSelectedControlTextColor : NSColor.labelColor,
             .paragraphStyle: style,
-        ]
-        let textH = ceil(font.ascender - font.descender)
+        ])
+        // Same highlighting as nvim's gitcommit syntax; plain white on the selection.
+        for s in CommitMessageSyntax.subject(commit.subject) {
+            let range = NSRange(location: s.location, length: s.length)
+            if s.kind == .subject { subject.addAttribute(.font, value: boldFont, range: range) }
+            if !selected { subject.addAttribute(.foregroundColor, value: Palette.color(s.kind), range: range) }
+        }
+        let textH = ceil(boldFont.ascender - boldFont.descender)
         let rect = NSRect(x: textX, y: (h - textH) / 2, width: max(0, bounds.width - textX), height: textH)
-        (commit.subject as NSString).draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
+        subject.draw(with: rect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     }
 
     private func color(_ i: Int) -> NSColor {
