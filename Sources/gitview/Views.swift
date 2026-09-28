@@ -127,3 +127,16 @@ final class PaneView: NSView {
         }
     }
 }
+
+/// Pane background: softer than the system's pure white / near black.
+enum Palette {
+    private static func rgb(_ hex: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
+
+    /// Soft gray: #F3F3F3 in light mode, #2A2A2A in dark mode.
+    static let background = NSColor(name: "gitview.background") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(0x2A2A2A) : rgb(0xF3F3F3)
+    }
+}

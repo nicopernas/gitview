@@ -133,6 +133,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
             t.addTableColumn(col)
         }
         t.style = .plain
+        t.backgroundColor = Palette.background
         t.intercellSpacing = NSSize(width: 6, height: 0)
         t.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         t.allowsMultipleSelection = false
@@ -155,6 +156,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         t.addTableColumn(col)
         t.headerView = nil
         t.style = .plain
+        t.backgroundColor = Palette.background
         t.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         t.dataSource = self
         t.delegate = self
@@ -211,6 +213,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         tv.isEditable = false
         tv.isSelectable = true
         tv.isRichText = false
+        tv.backgroundColor = Palette.background
         tv.textContainerInset = NSSize(width: 6, height: 6)
         tv.usesFindBar = true
         tv.isIncrementalSearchingEnabled = true
@@ -224,12 +227,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         tv.textContainer?.widthTracksTextView = true
 
         diffScroll.hasVerticalScroller = true
+        diffScroll.backgroundColor = Palette.background
         diffScroll.documentView = tv
     }
 
     private func scroll(_ table: NSTableView) -> NSScrollView {
         let s = NSScrollView()
         s.hasVerticalScroller = true
+        s.backgroundColor = Palette.background
         s.documentView = table
         return s
     }
