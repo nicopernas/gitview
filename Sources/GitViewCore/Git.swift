@@ -57,6 +57,9 @@ public enum Git {
                               onLine: (String) -> Bool) -> GitResult {
         let start = Date()
         let p = Process()
+        // waitUntilExit() often returns ~65ms after git has exited; a handler doesn't.
+        let exited = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in exited.signal() }
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         p.arguments = ["git"] + args
         p.currentDirectoryURL = dir
@@ -104,7 +107,7 @@ public enum Git {
             _ = onLine(String(decoding: buffer, as: UTF8.self))
         }
 
-        p.waitUntilExit()
+        exited.wait()
         try? (p.standardError as? FileHandle)?.close()
         stopped = stopped || (cancel?.isCancelled ?? false)
         let stderr = String(decoding: (try? Data(contentsOf: errURL)) ?? Data(), as: UTF8.self)
