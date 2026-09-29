@@ -32,12 +32,12 @@ public enum LocalChanges {
         let paths = args.firstIndex(of: "--").map { Array(args[$0...]) } ?? []
         var parent = head.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         var rows: [Commit] = []
-        // Exit code 1 means there are differences.
-        if Git.run(["diff", "--cached", "--quiet"] + paths, in: repo).status == 1 {
+        // Any output means changes. Not --quiet: its exit code 1 would be logged as an error.
+        if !Git.run(["diff", "--cached", "--name-only"] + paths, in: repo).stdout.isEmpty {
             rows.append(row(staged, parent: parent))
             parent = staged
         }
-        if Git.run(["diff", "--quiet"] + paths, in: repo).status == 1 {
+        if !Git.run(["diff", "--name-only"] + paths, in: repo).stdout.isEmpty {
             rows.insert(row(unstaged, parent: parent), at: 0)
         }
         return rows
