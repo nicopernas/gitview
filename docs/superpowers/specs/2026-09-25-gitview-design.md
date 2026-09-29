@@ -42,6 +42,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
   - `GraphLayout`: incremental lane assignment -> `GraphRow` per commit.
   - `LogLoader`: runs `git log` in the background, parses, lays out, delivers batches.
   - `DetailsParser` / `DetailsLoader`: runs `git show` for one commit, finds file offsets and line kinds.
+  - `LocalChanges`: rows for staged and unstaged changes.
   - `Search`: next/previous commit matching subject, author or hash prefix; wraps around.
 - `gitview` (AppKit executable): launch/detach, window, commit table, file list, diff view, find field, menus.
 
@@ -52,6 +53,15 @@ One Swift package, built with SwiftPM (no Xcode needed).
 - `--parents` is required so path-limited history keeps connected parents.
 - Output is read on a background thread; rows are appended in batches. The UI is usable while loading. Status bar shows progress and final count.
 - Cmd+R reloads and keeps the selected commit if it still exists.
+
+## Local changes
+
+- Like gitk: two extra rows for changes not yet committed, placed right above HEAD. Shown only when they have changes and HEAD is in the log.
+  - "Local uncommitted changes, not checked in to index" (red dot), fake id `000…000`. Child of the staged row if present, else of HEAD.
+  - "Local changes checked in to index but not committed" (green dot), fake id `000…001`. Child of HEAD.
+- Found before `git log` with `git rev-parse HEAD`, `git diff --cached --quiet` and `git diff --quiet` (exit code 1 = changes). Paths after `--` in the args limit the check.
+- Selecting one shows `git diff` or `git diff --cached` under a title line. No author, date or hash. The file list's first entry says "Unstaged changes" or "Staged changes" instead of "Commit".
+- Untracked files are not shown. Refreshed with Cmd+R.
 
 ## Graph
 

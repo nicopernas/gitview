@@ -42,7 +42,12 @@ final class CommitCellView: NSTableCellView {
         let r: CGFloat = 4
         let dot = NSBezierPath(ovalIn: NSRect(x: x(graph.column) - r, y: mid - r, width: 2 * r, height: 2 * r))
         let selected = backgroundStyle == .emphasized
-        color(graph.color).setFill()
+        // Like gitk: red for unstaged changes, green for staged.
+        switch commit.hash {
+        case LocalChanges.unstaged: NSColor.systemRed.setFill()
+        case LocalChanges.staged: NSColor.systemGreen.setFill()
+        default: color(graph.color).setFill()
+        }
         dot.fill()
         if selected {
             NSColor.white.setStroke()

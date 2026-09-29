@@ -19,6 +19,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     private var commits: [Commit] = []
     private var rows: [GraphRow] = []
     private var details: CommitDetails?
+    /// First entry of the file list: "Commit", or which local changes.
+    private var overviewLabel = "Commit"
     /// Files of the current commit that match the file filter.
     private var visibleFiles: [FileEntry] = []
 
@@ -144,8 +146,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         t.delegate = self
         t.onSpace = { [weak self] up in self?.pageDiff(up: up) }
         t.onCopy = { [weak self] in
-            guard let self, let c = self.selectedCommit else { return }
-            self.copyToPasteboard(c.hash)
+            guard let self, !self.hashLabel.stringValue.isEmpty else { return }
+            self.copyToPasteboard(self.hashLabel.stringValue)
         }
     }
 
@@ -520,7 +522,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     }
 
     private var countText: String {
-        commits.count == 1 ? "1 commit" : "\(commits.count.formatted()) commits"
+        let n = commits.count(where: { !LocalChanges.isLocal($0.hash) })
+        return n == 1 ? "1 commit" : "\(n.formatted()) commits"
     }
 
     private func showCount() {
@@ -542,7 +545,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard let table = notification.object as? NSTableView else { return }
         if table === commitTable {
-            hashLabel.stringValue = selectedCommit?.hash ?? ""
+            let hash = selectedCommit?.hash ?? ""
+            hashLabel.stringValue = LocalChanges.isLocal(hash) ? "" : hash
             if let c = selectedCommit { loadDetails(c.hash) }
         } else if table === fileTable {
             let row = fileTable.selectedRow
@@ -567,15 +571,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
                 if result.status != 0 && !result.stopped {
                     self.showDetailsError(result.stderr)
                 } else {
-                    self.show(details)
+                    self.show(details, hash: hash)
                     Log.info("details \(hash.prefix(12)): \(details.files.count) files, truncated=\(details.truncated), \(ms)ms")
                 }
             }
         }
     }
 
-    private func show(_ d: CommitDetails) {
+    private func show(_ d: CommitDetails, hash: String) {
         details = d
+        overviewLabel = LocalChanges.fileListLabel(hash)
         render(d)
         diffView.scroll(.zero)
         applyFileFilter()
@@ -657,7 +662,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
         guard let id = column?.identifier else { return nil }
         if tableView === fileTable {
-            return textCell(tableView, id, fileEntry(at: row)?.path ?? "Commit", font: font, truncate: .byTruncatingHead)
+            return textCell(tableView, id, fileEntry(at: row)?.path ?? overviewLabel, font: font, truncate: .byTruncatingHead)
         }
         let c = commits[row]
         switch id {
@@ -678,7 +683,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         case .author:
             return textCell(tableView, id, c.author, font: font)
         default:
-            return textCell(tableView, id, dateFormatter.string(from: c.date), font: font)
+            let date = LocalChanges.isLocal(c.hash) ? "" : dateFormatter.string(from: c.date)
+            return textCell(tableView, id, date, font: font)
         }
     }
 }

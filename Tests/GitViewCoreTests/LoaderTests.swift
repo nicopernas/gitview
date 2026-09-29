@@ -98,6 +98,37 @@ private func loadAll(_ repo: TestRepo, _ args: [String] = []) -> ([Commit], [Gra
         #expect(!result.stderr.isEmpty)
     }
 
+    @Test func localChangesComeRightAboveHead() throws {
+        let repo = try TestRepo()
+        try repo.commit("base")
+        try repo.git("checkout", "-q", "-b", "feature")
+        try repo.commit("feature work", file: "feature.txt")
+        try repo.git("checkout", "-q", "main")
+        try repo.write("file.txt", "staged\n")
+        try repo.git("add", "file.txt")
+        try repo.write("file.txt", "unstaged\n")
+
+        let (commits, rows, _) = loadAll(repo, ["--all"])
+        #expect(commits.map(\.subject) == [
+            "feature work",
+            "Local uncommitted changes, not checked in to index",
+            "Local changes checked in to index but not committed",
+            "base",
+        ])
+        #expect(rows.count == 4)
+    }
+
+    @Test func localChangesNeedHeadInTheLog() throws {
+        let repo = try TestRepo()
+        try repo.commit("base")
+        try repo.git("checkout", "-q", "-b", "feature")
+        try repo.commit("feature work", file: "feature.txt")
+        try repo.git("checkout", "-q", "main")
+        try repo.write("file.txt", "changed\n")
+
+        #expect(loadAll(repo, ["main..feature"]).0.map(\.subject) == ["feature work"])
+    }
+
     @Test func deliversSeveralBatches() throws {
         let repo = try TestRepo()
         for i in 0..<5 { try repo.commit("c\(i)") }
@@ -121,6 +152,34 @@ private func loadAll(_ repo: TestRepo, _ args: [String] = []) -> ([Commit], [Gra
         #expect(d.files.map(\.path) == ["a.txt"])
         #expect(d.spans.contains { $0.kind == .added })
         #expect(d.spans.contains { $0.kind == .removed })
+    }
+
+    @Test func loadsUnstagedChanges() throws {
+        let repo = try TestRepo()
+        try repo.commit("first", file: "a.txt", content: "old\n")
+        try repo.commit("second", file: "b.txt", content: "old\n")
+        try repo.write("a.txt", "staged\n")
+        try repo.git("add", "a.txt")
+        try repo.write("b.txt", "unstaged\n")
+
+        let (d, r) = DetailsLoader.load(repo: repo.url, hash: LocalChanges.unstaged)
+        #expect(r.status == 0)
+        #expect(d.text.hasPrefix("Local uncommitted changes, not checked in to index\n\ndiff --git a/b.txt b/b.txt\n"))
+        #expect(d.files.map(\.path) == ["b.txt"])
+    }
+
+    @Test func loadsStagedChanges() throws {
+        let repo = try TestRepo()
+        try repo.commit("first", file: "a.txt", content: "old\n")
+        try repo.commit("second", file: "b.txt", content: "old\n")
+        try repo.write("a.txt", "staged\n")
+        try repo.git("add", "a.txt")
+        try repo.write("b.txt", "unstaged\n")
+
+        let (d, r) = DetailsLoader.load(repo: repo.url, hash: LocalChanges.staged)
+        #expect(r.status == 0)
+        #expect(d.text.hasPrefix("Local changes checked in to index but not committed\n\n"))
+        #expect(d.files.map(\.path) == ["a.txt"])
     }
 
     @Test func reportsUnknownCommit() throws {
