@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let view = submenu(main, "View")
         view.addItem(withTitle: "Reload", action: #selector(MainWindowController.gvReload(_:)), keyEquivalent: "r")
         view.addItem(.separator())
+        view.addItem(withTitle: "Next Worktree", action: #selector(MainWindowController.gvNextWorktree(_:)), keyEquivalent: "]")
+        view.addItem(withTitle: "Previous Worktree", action: #selector(MainWindowController.gvPreviousWorktree(_:)), keyEquivalent: "[")
+        view.addItem(.separator())
         let appearance = NSMenu(title: "Appearance")
         for (theme, title) in [(Theme.light, "Light"), (.dark, "Dark"), (.system, "System")] {
             let item = appearance.addItem(withTitle: title, action: #selector(setTheme(_:)), keyEquivalent: "")

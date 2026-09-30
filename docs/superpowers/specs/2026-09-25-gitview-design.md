@@ -43,6 +43,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
   - `LogLoader`: runs `git log` in the background, parses, lays out, delivers batches.
   - `DetailsParser` / `DetailsLoader`: runs `git show` for one commit, finds file offsets and line kinds.
   - `LocalChanges`: rows for staged and unstaged changes.
+  - `Worktrees`: parses `git worktree list --porcelain`; next/previous worktree.
   - `Search`: next/previous commit matching subject, author or hash prefix; wraps around.
 - `gitview` (AppKit executable): launch/detach, window, commit table, file list, diff view, find field, menus.
 
@@ -62,6 +63,16 @@ One Swift package, built with SwiftPM (no Xcode needed).
 - Found before `git log` with `git rev-parse HEAD`, `git diff --cached --name-only` and `git diff --name-only` (any output = changes). Paths after `--` in the args limit the check.
 - Selecting one shows `git diff` or `git diff --cached` under a title line. No author, date or hash. The file list's first entry says "Unstaged changes" or "Staged changes" instead of "Commit".
 - Untracked files are not shown. Refreshed with Cmd+R.
+
+## Worktrees
+
+- A popup in the toolbar, next to the find field, lists the repo's worktrees as `name (branch)` or `name (detached abc1234)`, from `git worktree list --porcelain`. Hidden when there is only one.
+- Picking one reloads the same window in that worktree (title, graph, local changes), keeping the selected commit if it's there. The args are kept.
+- View → Next / Previous Worktree (Cmd+] / Cmd+[) cycle through them, wrapping around.
+- Worktrees whose folder is gone ("prunable") are greyed out and skipped. Bare entries are left out.
+- The list is read again on every load (startup, Cmd+R, switch).
+- If the current worktree's folder was removed, the next load (e.g. Cmd+R) moves to the first worktree still on disk, normally the main one.
+- Relative paths in the args (e.g. `-- src/` from a subfolder) may not match after a switch: git then runs in the worktree root.
 
 ## Graph
 
@@ -95,6 +106,7 @@ One Swift package, built with SwiftPM (no Xcode needed).
 - Tab / Shift+Tab: next / previous pane (commits, diff, files). Never lands on a search field.
 - Cmd+F or /: focus commit find field. When the file list has focus: the file filter. When the diff has focus: native find bar in the diff.
 - Enter or Cmd+G / Shift+Cmd+G: next / previous match.
+- Cmd+] / Cmd+[: next / previous worktree.
 - Cmd+R: reload. Cmd+W / Cmd+Q: close / quit.
 
 ## Errors

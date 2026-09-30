@@ -7,13 +7,14 @@ private extension NSUserInterfaceItemIdentifier {
     static let date = Self("date")
     static let file = Self("file")
     static let search = Self("search")
+    static let worktree = Self("worktree")
 }
 
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource,
-    NSTableViewDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
-    private let repo: URL
+    NSTableViewDelegate, NSToolbarDelegate, NSSearchFieldDelegate, NSMenuItemValidation {
+    private var repo: URL
     /// Where git runs: the launch directory, so relative paths in `args` work.
-    private let workDir: URL
+    private var workDir: URL
     private let args: [String]
 
     private var commits: [Commit] = []
@@ -42,6 +43,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     private let hashLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton()
     private var panes: [PaneView] = []
+    private var worktrees: [Worktree] = []
+    private let worktreePopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     private var font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
     private var boldFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .bold)
@@ -63,7 +66,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         super.init(window: window)
         window.delegate = self
         window.onFirstResponderChange = { [weak self] in self?.updatePaneFocus() }
-        window.title = ([repo.lastPathComponent] + args).joined(separator: " ")
+        updateTitle()
         buildUI(window)
         applyFont(Self.resolve(FontPreference.load()))
         NSFontManager.shared.target = self
@@ -301,7 +304,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, NSToolbarItem.Identifier(NSUserInterfaceItemIdentifier.search.rawValue)]
+        [NSToolbarItem.Identifier(NSUserInterfaceItemIdentifier.worktree.rawValue), .flexibleSpace,
+         NSToolbarItem.Identifier(NSUserInterfaceItemIdentifier.search.rawValue)]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -310,6 +314,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if id.rawValue == NSUserInterfaceItemIdentifier.worktree.rawValue {
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.label = "Worktree"
+            item.view = worktreePopup
+            worktreePopup.autoenablesItems = false
+            worktreePopup.isHidden = true
+            worktreePopup.target = self
+            worktreePopup.action = #selector(pickWorktree(_:))
+            return item
+        }
         guard id.rawValue == NSUserInterfaceItemIdentifier.search.rawValue else { return nil }
         let item = NSSearchToolbarItem(itemIdentifier: id)
         item.searchField = searchField
@@ -402,6 +416,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         startLoading(select: selectedCommit?.hash)
     }
 
+    @objc func gvNextWorktree(_ sender: Any?) { stepWorktree(1) }
+    @objc func gvPreviousWorktree(_ sender: Any?) { stepWorktree(-1) }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(gvNextWorktree(_:)) || item.action == #selector(gvPreviousWorktree(_:)) {
+            return Worktrees.next(from: repo, in: worktrees, step: 1) != nil
+        }
+        return true
+    }
+
     @objc func gvNextPane(_ sender: Any?) { movePane(by: 1) }
     @objc func gvPreviousPane(_ sender: Any?) { movePane(by: -1) }
 
@@ -459,9 +483,55 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
         }
     }
 
+    // MARK: - Worktrees
+
+    private func updateTitle() {
+        window?.title = ([repo.lastPathComponent] + args).joined(separator: " ")
+    }
+
+    private func showWorktrees(_ list: [Worktree]) {
+        worktrees = list
+        worktreePopup.removeAllItems()
+        for w in list {
+            // Not addItem(withTitle:): it drops duplicate titles.
+            let item = NSMenuItem(title: w.title, action: nil, keyEquivalent: "")
+            item.isEnabled = !w.prunable
+            worktreePopup.menu?.addItem(item)
+        }
+        worktreePopup.selectItem(at: Worktrees.find(repo, in: list) ?? -1)
+        worktreePopup.isHidden = list.count < 2
+    }
+
+    @objc private func pickWorktree(_ sender: NSPopUpButton) {
+        let i = sender.indexOfSelectedItem
+        if i >= 0 && i < worktrees.count { switchTo(worktrees[i]) }
+    }
+
+    private func stepWorktree(_ step: Int) {
+        if let w = Worktrees.next(from: repo, in: worktrees, step: step) { switchTo(w) }
+    }
+
+    /// Reloads this window in another worktree, keeping the selected commit if it's there.
+    private func switchTo(_ w: Worktree) {
+        guard Worktrees.find(repo, in: [w]) == nil else { return }
+        Log.info("worktree: \(w.path)")
+        moveTo(w)
+        startLoading(select: selectedCommit?.hash)
+    }
+
+    private func moveTo(_ w: Worktree) {
+        repo = URL(fileURLWithPath: w.path)
+        workDir = repo
+        updateTitle()
+    }
+
     // MARK: - Loading
 
     private func startLoading(select hash: String?) {
+        if let w = Worktrees.fallback(for: workDir, in: worktrees) {
+            Log.info("\(workDir.path) is gone, going to \(w.path)")
+            moveTo(w)
+        }
         loader?.cancel()
         loadGen += 1
         let gen = loadGen
@@ -474,6 +544,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTableV
 
         let loader = LogLoader(repo: workDir, args: args)
         self.loader = loader
+        let workDir = workDir
+        DispatchQueue.global(qos: .userInitiated).async {
+            let list = Worktrees.load(repo: workDir)
+            DispatchQueue.main.async {
+                guard gen == self.loadGen else { return }
+                self.showWorktrees(list)
+            }
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             let result = loader.run { batch in
                 DispatchQueue.main.async {
